@@ -17,3 +17,5 @@ MiroFish/.env
 # External vendor checkout kept local only
 MiroFish/
 .vercel
+
+.playwright-cli/
