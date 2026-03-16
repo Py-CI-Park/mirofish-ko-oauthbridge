@@ -9,6 +9,10 @@ import ReportGraphPanel from '@/components/report-graph-panel'
 
 export const dynamic = 'force-dynamic'
 
+function createDownloadHref(content = '') {
+  return `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`
+}
+
 function extractConclusion(markdown, fallbackSummary = '') {
   const text = `${markdown || ''}`
   const lines = text.split(/\r?\n/)
@@ -106,25 +110,46 @@ export default async function ReportPage({ params }) {
             </div>
           </div>
 
-          <div className="details-stack">
-            <details className="detail-card" open>
-              <summary>시뮬레이션 프롬프트</summary>
-              <pre className="log-box">{sourceMaterials.simulationPrompt || '기록된 시뮬레이션 프롬프트가 없어.'}</pre>
-            </details>
+          <details className="detail-card">
+            <summary className="workflow-summary">
+              <div className="workflow-summary-main">
+                <div>
+                  <div className="workflow-summary-title">입력 단서 펼치기</div>
+                  <div className="workflow-summary-desc">기본으로 접혀 있으며, 누르면 현실 단서 파일과 시뮬레이션 프롬프트를 볼 수 있어.</div>
+                </div>
+              </div>
+              <div className="workflow-summary-side">
+                <span className="btn secondary">펼치기</span>
+              </div>
+            </summary>
 
-            {(sourceMaterials.sourceFiles || []).map((file, index) => (
-              <details className="detail-card" open key={`${file.filename || 'source'}-${index}`}>
-                <summary>{file.filename || `현실 단서 파일 ${index + 1}`}</summary>
-                <div className="meta-list small">
-                  <span className="badge">파일 {index + 1}</span>
-                  {typeof file.size === 'number' ? <span className="badge">{file.size.toLocaleString()} 바이트</span> : null}
-                </div>
-                <div className="markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{file.content || '_표시할 파일 내용이 없어._'}</ReactMarkdown>
-                </div>
+            <div className="details-stack">
+              <details className="detail-card" open>
+                <summary>시뮬레이션 프롬프트</summary>
+                <pre className="log-box">{sourceMaterials.simulationPrompt || '기록된 시뮬레이션 프롬프트가 없어.'}</pre>
               </details>
-            ))}
-          </div>
+
+              {(sourceMaterials.sourceFiles || []).map((file, index) => (
+                <details className="detail-card" open key={`${file.filename || 'source'}-${index}`}>
+                  <summary>{file.filename || `현실 단서 파일 ${index + 1}`}</summary>
+                  <div className="meta-list small">
+                    <span className="badge">파일 {index + 1}</span>
+                    {typeof file.size === 'number' ? <span className="badge">{file.size.toLocaleString()} 바이트</span> : null}
+                    <a
+                      className="btn secondary"
+                      href={createDownloadHref(file.content || '')}
+                      download={file.filename || `source-${index + 1}.txt`}
+                    >
+                      다운로드
+                    </a>
+                  </div>
+                  <div className="markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{file.content || '_표시할 파일 내용이 없어._'}</ReactMarkdown>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </details>
         </section>
 
         <section className="panel-card report-conclusion-panel">
