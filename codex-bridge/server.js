@@ -15,6 +15,7 @@ const PORT = Number(process.env.PORT || 8787);
 const CODEX_BIN = process.env.CODEX_BIN || 'codex';
 const DEFAULT_MODEL = process.env.CODEX_MODEL || 'gpt-5.1-codex-mini';
 const CODEX_WORKDIR = process.env.CODEX_BRIDGE_WORKDIR || process.cwd();
+const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS || 180000);
 
 let busy = false;
 
@@ -91,10 +92,23 @@ async function runCodex({ prompt, model }) {
   ];
 
   try {
-    await execFileAsync(CODEX_BIN, args, {
-      maxBuffer: 10 * 1024 * 1024,
-      env: process.env,
-    });
+    try {
+      await execFileAsync(CODEX_BIN, args, {
+        maxBuffer: 10 * 1024 * 1024,
+        env: process.env,
+        timeout: CODEX_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      });
+    } catch (error) {
+      if (
+        error.code === 'ETIMEDOUT' ||
+        error.signal === 'SIGKILL' ||
+        String(error.message || '').includes('timed out')
+      ) {
+        throw new Error(`Codex request timed out after ${Math.round(CODEX_TIMEOUT_MS / 1000)} seconds.`);
+      }
+      throw error;
+    }
 
     const content = await fs.readFile(outputFile, 'utf8');
     return content.trim();
@@ -128,6 +142,7 @@ app.get('/health', async (_req, res) => {
     loginStatus,
     workdir: CODEX_WORKDIR,
     defaultModel: DEFAULT_MODEL,
+    timeoutMs: CODEX_TIMEOUT_MS,
   });
 });
 
@@ -189,5 +204,6 @@ app.listen(PORT, () => {
   console.log(`codex-bridge listening on http://127.0.0.1:${PORT}`);
   console.log(`workdir=${CODEX_WORKDIR}`);
   console.log(`defaultModel=${DEFAULT_MODEL}`);
+  console.log(`timeoutMs=${CODEX_TIMEOUT_MS}`);
   console.log(`codexAuth=${loginStatus}`);
 });
