@@ -68,3 +68,5 @@ data/
 # Next.js dashboard
 dashboard/.next/
 dashboard/.vercel/
+.superset/config.local.json
+temp_cache/
