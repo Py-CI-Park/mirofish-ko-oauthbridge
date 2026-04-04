@@ -64,6 +64,9 @@ npm run dev:all
 - 브리지: `http://127.0.0.1:8787/health`
 
 ## 6. 첫 테스트 방법
+
+업로드 전에 [시뮬레이션 입력 가이드](./simulation-input-guide-ko.md)를 먼저 읽어 두면 `좋은 입력`과 `필터 완화 재시도` 기준을 바로 맞추기 쉽습니다.
+
 1. `examples/scenarios/ko/`에서 시나리오 하나 선택
 2. MiroFish 홈에서 해당 문서를 업로드
 3. 같은 주제의 `examples/prompts/ko/` 프롬프트 하나 입력
