@@ -556,7 +556,12 @@ const checkBridgeBeforeOntology = async () => {
   const bridge = await getBridgeHealth()
 
   if (!bridge?.ok || !bridge?.providerAvailable) {
-    throw new Error('로컬 브리지를 사용할 수 없습니다. dev:all을 다시 실행하고 http://127.0.0.1:8787/health 를 확인해 주세요.')
+    const details = [
+      bridge?.provider ? `provider=${bridge.provider}` : null,
+      bridge?.loginStatus ? `loginStatus=${bridge.loginStatus}` : null,
+      bridge?.cliAvailable === false ? 'cliAvailable=false' : null
+    ].filter(Boolean).join(', ')
+    throw new Error(`?? OAuth ???? ??? ? ????. bridge-health ??? ??? ???${details ? ` (${details})` : ''}.`)
   }
 
   if (bridge.busy) {

@@ -4,7 +4,7 @@
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 # 加载项目根目录的环境变量文件
 # 路径: repo/.env, repo/.env.local (相对于 backend/app/config.py)
@@ -13,10 +13,14 @@ project_root_env = os.path.join(project_root, '.env')
 project_root_env_local = os.path.join(project_root, '.env.local')
 
 if os.path.exists(project_root_env):
-    load_dotenv(project_root_env, override=True)
+    for key, value in dotenv_values(project_root_env).items():
+        if value is not None and key not in os.environ:
+            os.environ[key] = value
 
 if os.path.exists(project_root_env_local):
-    load_dotenv(project_root_env_local, override=True)
+    for key, value in dotenv_values(project_root_env_local).items():
+        if value is not None and key not in os.environ:
+            os.environ[key] = value
 
 if not os.path.exists(project_root_env) and not os.path.exists(project_root_env_local):
     # 如果根目录没有 .env / .env.local，尝试加载环境变量（用于生产环境）
