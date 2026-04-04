@@ -13,7 +13,7 @@ cd codex-bridge
 npm install
 PORT=8787 \
 BRIDGE_PROVIDER=codex \
-CODEX_MODEL=gpt-5.1-codex-mini \
+CODEX_MODEL=gpt-5.4-mini \
 CODEX_BRIDGE_WORKDIR=/absolute/path/to/this/repository \
 npm start
 ```

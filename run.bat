@@ -4,7 +4,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 if not defined BRIDGE_PROVIDER set "BRIDGE_PROVIDER=codex"
-if not defined CODEX_MODEL set "CODEX_MODEL=gpt-5.1-codex-mini"
+if not defined CODEX_MODEL set "CODEX_MODEL=gpt-5.4-mini"
 if not defined GEMINI_MODEL set "GEMINI_MODEL=gemini-2.5-flash"
 if not defined CODEX_BRIDGE_WORKDIR set "CODEX_BRIDGE_WORKDIR=%CD%"
 

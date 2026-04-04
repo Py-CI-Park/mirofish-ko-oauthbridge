@@ -19,7 +19,7 @@ cp .env.example .env
 ```env
 LLM_API_KEY=local-oauth-bridge
 LLM_BASE_URL=http://127.0.0.1:8787/v1
-LLM_MODEL_NAME=gpt-5.1-codex-mini
+LLM_MODEL_NAME=gpt-5.4-mini
 ZEP_API_KEY=YOUR_ZEP_API_KEY_HERE
 ```
 
@@ -38,7 +38,7 @@ npm run setup:public
 ```bash
 PORT=8787 \
 BRIDGE_PROVIDER=codex \
-CODEX_MODEL=gpt-5.1-codex-mini \
+CODEX_MODEL=gpt-5.4-mini \
 CODEX_BRIDGE_WORKDIR=$(pwd) \
 npm run dev:all
 ```
