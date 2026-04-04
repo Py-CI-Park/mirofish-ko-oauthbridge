@@ -59,6 +59,8 @@ class SimulationState:
     entity_types: List[str] = field(default_factory=list)
     entity_filter_mode: str = "strict"
     entity_readiness: Dict[str, Any] = field(default_factory=dict)
+    failure_stage: Optional[str] = None
+    failure_kind: Optional[str] = None
     
     # 配置生成信息
     config_generated: bool = False
@@ -92,6 +94,8 @@ class SimulationState:
             "entity_types": self.entity_types,
             "entity_filter_mode": self.entity_filter_mode,
             "entity_readiness": self.entity_readiness,
+            "failure_stage": self.failure_stage,
+            "failure_kind": self.failure_kind,
             "config_generated": self.config_generated,
             "config_reasoning": self.config_reasoning,
             "prepare_task_id": self.prepare_task_id,
@@ -116,6 +120,8 @@ class SimulationState:
             "entity_types": self.entity_types,
             "entity_filter_mode": self.entity_filter_mode,
             "entity_readiness": self.entity_readiness,
+            "failure_stage": self.failure_stage,
+            "failure_kind": self.failure_kind,
             "config_generated": self.config_generated,
             "error": self.error,
         }
@@ -189,6 +195,8 @@ class SimulationManager:
             entity_types=data.get("entity_types", []),
             entity_filter_mode=data.get("entity_filter_mode", "strict"),
             entity_readiness=data.get("entity_readiness", {}),
+            failure_stage=data.get("failure_stage"),
+            failure_kind=data.get("failure_kind"),
             config_generated=data.get("config_generated", False),
             config_reasoning=data.get("config_reasoning", ""),
             prepare_task_id=data.get("prepare_task_id"),
@@ -239,6 +247,25 @@ class SimulationManager:
         logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
         
         return state
+
+    def _clear_failure_state(self, state: SimulationState) -> None:
+        state.error = None
+        state.failure_stage = None
+        state.failure_kind = None
+
+    def _mark_failure(
+        self,
+        state: SimulationState,
+        *,
+        stage: str,
+        kind: str,
+        message: str,
+    ) -> None:
+        state.status = SimulationStatus.FAILED
+        state.error = message
+        state.failure_stage = stage
+        state.failure_kind = kind
+        self._save_simulation_state(state)
     
     def prepare_simulation(
         self,
@@ -276,9 +303,13 @@ class SimulationManager:
         state = self._load_simulation_state(simulation_id)
         if not state:
             raise ValueError(f"Simulation not found: {simulation_id}")
-        
+
+        failure_stage = "prepare"
+        failure_kind = "prepare_runtime"
+
         try:
             state.entity_filter_mode = (entity_match_mode or "strict").lower()
+            self._clear_failure_state(state)
             state.status = SimulationStatus.PREPARING
             self._save_simulation_state(state)
             
@@ -314,12 +345,15 @@ class SimulationManager:
                 )
             
             if filtered.filtered_count == 0:
-                state.status = SimulationStatus.FAILED
-                state.error = (
-                    "No matching entities were found for simulation preparation. "
-                    "Review the graph contents or try a different entity_match_mode."
+                self._mark_failure(
+                    state,
+                    stage="prepare",
+                    kind="entity_matching",
+                    message=(
+                        "No matching entities were found for simulation preparation. "
+                        "Review the graph contents or try a different entity_match_mode."
+                    ),
                 )
-                self._save_simulation_state(state)
                 return state
             
             # ========== 阶段2: 生成Agent Profile ==========
@@ -403,6 +437,8 @@ class SimulationManager:
                 )
             
             # ========== 阶段3: LLM智能生成模拟配置 ==========
+            failure_stage = "config"
+            failure_kind = "config_generation"
             if progress_callback:
                 progress_callback(
                     "generating_config", 0, 
@@ -472,9 +508,12 @@ class SimulationManager:
             logger.error(f"模拟准备失败: {simulation_id}, error={str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            state.status = SimulationStatus.FAILED
-            state.error = str(e)
-            self._save_simulation_state(state)
+            self._mark_failure(
+                state,
+                stage=failure_stage,
+                kind=failure_kind,
+                message=str(e),
+            )
             raise
     
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:

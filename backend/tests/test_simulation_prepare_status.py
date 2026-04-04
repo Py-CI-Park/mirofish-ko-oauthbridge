@@ -317,6 +317,8 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             self.assertEqual(result_state.status, env.sim_manager_module.SimulationStatus.FAILED)
             self.assertEqual(result_state.entity_filter_mode, "relaxed")
             self.assertEqual(result_state.entity_readiness, readiness)
+            self.assertEqual(result_state.failure_stage, "prepare")
+            self.assertEqual(result_state.failure_kind, "entity_matching")
             self.assertIn("No matching entities", result_state.error)
 
             state_file = env.temp_dir / created.simulation_id / "state.json"
@@ -324,8 +326,12 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             self.assertEqual(state_json["status"], "failed")
             self.assertEqual(state_json["entity_filter_mode"], "relaxed")
             self.assertEqual(state_json["entity_readiness"], readiness)
+            self.assertEqual(state_json["failure_stage"], "prepare")
+            self.assertEqual(state_json["failure_kind"], "entity_matching")
             self.assertEqual(result_state.to_simple_dict()["entity_filter_mode"], "relaxed")
             self.assertEqual(result_state.to_simple_dict()["entity_readiness"], readiness)
+            self.assertEqual(result_state.to_simple_dict()["failure_stage"], "prepare")
+            self.assertEqual(result_state.to_simple_dict()["failure_kind"], "entity_matching")
 
     def test_prepare_endpoint_marks_task_failed_and_status_reports_failed_simulation(self):
         readiness = {
@@ -397,6 +403,8 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             self.assertIn("No matching entities", status_payload["data"]["error"])
             self.assertEqual(status_payload["data"]["entity_filter_mode"], "relaxed")
             self.assertEqual(status_payload["data"]["entity_readiness"], readiness)
+            self.assertEqual(status_payload["data"]["failure_stage"], "prepare")
+            self.assertEqual(status_payload["data"]["failure_kind"], "entity_matching")
 
     def test_realtime_config_reports_failed_generation_state(self):
         readiness = {
@@ -421,6 +429,8 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             state.error = "No matching entities were found."
             state.entity_filter_mode = "strict"
             state.entity_readiness = readiness
+            state.failure_stage = "prepare"
+            state.failure_kind = "entity_matching"
             state.config_generated = False
             manager._save_simulation_state(state)
 
@@ -435,6 +445,8 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             self.assertEqual(payload["data"]["failure_reason"], "No matching entities were found.")
             self.assertEqual(payload["data"]["entity_filter_mode"], "strict")
             self.assertEqual(payload["data"]["entity_readiness"], readiness)
+            self.assertEqual(payload["data"]["failure_stage"], "prepare")
+            self.assertEqual(payload["data"]["failure_kind"], "entity_matching")
 
     def test_prepare_status_prefers_prepared_result_when_failed_state_has_complete_artifacts(self):
         with _loaded_test_environment() as env:
@@ -506,6 +518,81 @@ class SimulationPrepareFailureStatusTest(unittest.TestCase):
             self.assertEqual(payload["data"]["failure_reason"], state.error)
             self.assertEqual(payload["data"]["entity_filter_mode"], "relaxed")
             self.assertEqual(payload["data"]["entity_readiness"], readiness)
+            self.assertEqual(payload["data"]["failure_stage"], "prepare")
+            self.assertEqual(payload["data"]["failure_kind"], "entity_matching")
+
+    def test_prepare_rejects_invalid_entity_match_mode_at_request_boundary(self):
+        with _loaded_test_environment() as env:
+            manager = env.sim_manager_module.SimulationManager()
+            created = manager.create_simulation("project-6", "graph-6")
+            env.reader_class.calls = []
+
+            with env.app.test_client() as client:
+                response = client.post(
+                    "/api/simulation/prepare",
+                    json={
+                        "simulation_id": created.simulation_id,
+                        "entity_match_mode": "invalid-mode",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            payload = response.get_json()
+            self.assertFalse(payload["success"])
+            self.assertIn("entity_match_mode", payload["error"])
+            self.assertEqual(env.reader_class.calls, [])
+
+    def test_prepare_rejects_non_string_entity_match_mode_at_request_boundary(self):
+        with _loaded_test_environment() as env:
+            manager = env.sim_manager_module.SimulationManager()
+            created = manager.create_simulation("project-8", "graph-8")
+            env.reader_class.calls = []
+
+            with env.app.test_client() as client:
+                response = client.post(
+                    "/api/simulation/prepare",
+                    json={
+                        "simulation_id": created.simulation_id,
+                        "entity_match_mode": True,
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            payload = response.get_json()
+            self.assertFalse(payload["success"])
+            self.assertIn("entity_match_mode", payload["error"])
+            self.assertEqual(env.reader_class.calls, [])
+
+    def test_realtime_config_reports_config_generation_failure_kind(self):
+        readiness = {
+            "match_mode": "strict",
+            "total_nodes": 6,
+            "matched_entities": 4,
+        }
+
+        with _loaded_test_environment() as env:
+            manager = env.sim_manager_module.SimulationManager()
+            created = manager.create_simulation("project-7", "graph-7")
+            state = manager.get_simulation(created.simulation_id)
+            state.status = env.sim_manager_module.SimulationStatus.FAILED
+            state.error = "LLM config generation crashed."
+            state.entity_filter_mode = "strict"
+            state.entity_readiness = readiness
+            state.failure_stage = "config"
+            state.failure_kind = "config_generation"
+            state.config_generated = False
+            manager._save_simulation_state(state)
+
+            with env.app.test_client() as client:
+                response = client.get(f"/api/simulation/{created.simulation_id}/config/realtime")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertTrue(payload["success"])
+            self.assertEqual(payload["data"]["generation_stage"], "failed")
+            self.assertEqual(payload["data"]["failure_stage"], "config")
+            self.assertEqual(payload["data"]["failure_kind"], "config_generation")
+            self.assertEqual(payload["data"]["failure_reason"], "LLM config generation crashed.")
 
 
 if __name__ == "__main__":

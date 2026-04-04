@@ -356,6 +356,13 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
 
 
 def _build_failed_prepare_response(state, task_id=None):
+    failure_stage, failure_kind = _resolve_failure_metadata(
+        failure_stage=getattr(state, "failure_stage", None),
+        failure_kind=getattr(state, "failure_kind", None),
+        error=getattr(state, "error", None),
+        readiness=getattr(state, "entity_readiness", None),
+        default_stage="prepare",
+    )
     return {
         "simulation_id": state.simulation_id,
         "task_id": task_id,
@@ -365,9 +372,64 @@ def _build_failed_prepare_response(state, task_id=None):
         "already_prepared": False,
         "error": state.error,
         "failure_reason": state.error,
+        "failure_stage": failure_stage,
+        "failure_kind": failure_kind,
         "entity_filter_mode": state.entity_filter_mode,
         "entity_readiness": state.entity_readiness,
     }
+
+
+_VALID_ENTITY_MATCH_MODES = {"strict", "relaxed"}
+
+
+def _parse_entity_match_mode(raw_value):
+    if raw_value is None:
+        return "strict"
+    if not isinstance(raw_value, str):
+        raise ValueError(
+            "entity_match_mode must be a string and one of: strict, relaxed"
+        )
+    entity_match_mode = raw_value.lower()
+    if entity_match_mode not in _VALID_ENTITY_MATCH_MODES:
+        raise ValueError(
+            "entity_match_mode must be one of: strict, relaxed"
+        )
+    return entity_match_mode
+
+
+def _resolve_failure_metadata(
+    *,
+    failure_stage,
+    failure_kind,
+    error,
+    readiness,
+    default_stage,
+):
+    if failure_stage and failure_kind:
+        return failure_stage, failure_kind
+
+    readiness = readiness or {}
+    error_text = (error or "").lower()
+    matched_entities = readiness.get("matched_entities")
+    looks_like_matching_failure = (
+        "no matching entities" in error_text
+        or (
+            matched_entities == 0
+            and bool(readiness)
+        )
+    )
+
+    resolved_stage = failure_stage or ("prepare" if looks_like_matching_failure else default_stage)
+    if failure_kind:
+        resolved_kind = failure_kind
+    elif looks_like_matching_failure:
+        resolved_kind = "entity_matching"
+    elif resolved_stage == "config":
+        resolved_kind = "config_generation"
+    else:
+        resolved_kind = "prepare_runtime"
+
+    return resolved_stage, resolved_kind
 
 
 @simulation_bp.route('/prepare', methods=['POST'])
@@ -490,7 +552,7 @@ def prepare_simulation():
         document_text = ProjectManager.get_extracted_text(state.project_id) or ""
 
         entity_types_list = data.get('entity_types')
-        entity_match_mode = (data.get('entity_match_mode') or 'strict').lower()
+        entity_match_mode = _parse_entity_match_mode(data.get('entity_match_mode'))
         use_llm_for_profiles = data.get('use_llm_for_profiles', True)
         parallel_profile_count = data.get('parallel_profile_count', 5)
 
@@ -685,7 +747,7 @@ def prepare_simulation():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 404
+        }), 400
 
     except Exception as e:
         logger.error(f"Start preparation task failed: {str(e)}")
@@ -861,6 +923,20 @@ def get_prepare_status():
 
         task_dict = task.to_dict()
         task_dict["already_prepared"] = False
+        if task_dict.get("status") == "failed":
+            resolved_stage, resolved_kind = _resolve_failure_metadata(
+                failure_stage=getattr(linked_state, "failure_stage", None),
+                failure_kind=getattr(linked_state, "failure_kind", None),
+                error=getattr(linked_state, "error", None) or task_dict.get("error"),
+                readiness=getattr(linked_state, "entity_readiness", None),
+                default_stage="prepare",
+            )
+            task_dict["failure_stage"] = (
+                resolved_stage
+            )
+            task_dict["failure_kind"] = (
+                resolved_kind
+            )
 
         return jsonify({
             "success": True,
@@ -1363,6 +1439,8 @@ def get_simulation_config_realtime(simulation_id: str):
         generation_stage = None
         config_generated = False
         failure_reason = None
+        failure_stage = None
+        failure_kind = None
         entity_readiness = {}
         entity_filter_mode = "strict"
 
@@ -1375,6 +1453,8 @@ def get_simulation_config_realtime(simulation_id: str):
                     is_generating = status == "preparing"
                     config_generated = state_data.get("config_generated", False)
                     failure_reason = state_data.get("error")
+                    failure_stage = state_data.get("failure_stage")
+                    failure_kind = state_data.get("failure_kind")
                     entity_readiness = state_data.get("entity_readiness", {})
                     entity_filter_mode = state_data.get("entity_filter_mode", "strict")
 
@@ -1392,6 +1472,14 @@ def get_simulation_config_realtime(simulation_id: str):
             except Exception:
                 pass
 
+        failure_stage, failure_kind = _resolve_failure_metadata(
+            failure_stage=failure_stage,
+            failure_kind=failure_kind,
+            error=failure_reason,
+            readiness=entity_readiness,
+            default_stage="config",
+        )
+
         # Build return data
         response_data = {
             "simulation_id": simulation_id,
@@ -1401,6 +1489,8 @@ def get_simulation_config_realtime(simulation_id: str):
             "generation_stage": generation_stage,
             "config_generated": config_generated,
             "failure_reason": failure_reason,
+            "failure_stage": failure_stage,
+            "failure_kind": failure_kind,
             "entity_readiness": entity_readiness,
             "entity_filter_mode": entity_filter_mode,
             "config": config

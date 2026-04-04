@@ -76,10 +76,16 @@
                 <h4 class="failure-title">{{ prepareStageFailure.title }}</h4>
                 <p class="failure-message">{{ prepareStageFailure.message }}</p>
               </div>
-              <span class="failure-badge">{{ formatMatchMode(prepareStageFailure.filterMode) }}</span>
+              <span
+                v-if="shouldShowFailureDiagnostics(prepareStageFailure)"
+                class="failure-badge"
+              >{{ formatMatchMode(prepareStageFailure.filterMode) }}</span>
             </div>
 
-            <div class="failure-diagnostics">
+            <div
+              v-if="shouldShowFailureDiagnostics(prepareStageFailure)"
+              class="failure-diagnostics"
+            >
               <div class="failure-diagnostic">
                 <span class="failure-label">{{ t('step2.failureTotalNodes') }}</span>
                 <span class="failure-value">{{ prepareStageFailure.readiness?.total_nodes ?? '-' }}</span>
@@ -200,10 +206,16 @@
                 <h4 class="failure-title">{{ configStageFailure.title }}</h4>
                 <p class="failure-message">{{ configStageFailure.message }}</p>
               </div>
-              <span class="failure-badge">{{ formatMatchMode(configStageFailure.filterMode) }}</span>
+              <span
+                v-if="shouldShowFailureDiagnostics(configStageFailure)"
+                class="failure-badge"
+              >{{ formatMatchMode(configStageFailure.filterMode) }}</span>
             </div>
 
-            <div class="failure-diagnostics">
+            <div
+              v-if="shouldShowFailureDiagnostics(configStageFailure)"
+              class="failure-diagnostics"
+            >
               <div class="failure-diagnostic">
                 <span class="failure-label">{{ t('step2.failureTotalNodes') }}</span>
                 <span class="failure-value">{{ configStageFailure.readiness?.total_nodes ?? '-' }}</span>
@@ -822,7 +834,8 @@ const configStageFailure = computed(() => (
 ))
 
 const canRetryWithRelaxedMatching = computed(() => (
-  prepareStageFailure.value?.filterMode !== 'relaxed'
+  prepareStageFailure.value?.kind === 'entity_matching'
+    && prepareStageFailure.value?.filterMode !== 'relaxed'
 ))
 
 // 대리인에 따르면_id해당 사용자 이름을 가져옵니다
@@ -853,6 +866,10 @@ const formatMatchMode = (mode) => {
   if (mode === 'strict') return t('step2.matchModeStrict')
   return mode || '-'
 }
+
+const shouldShowFailureDiagnostics = (failure) => (
+  failure?.kind === 'entity_matching'
+)
 
 // Methods
 const addLog = (msg) => {
@@ -892,10 +909,11 @@ const resetPreparationView = () => {
   lastLoggedConfigStage = ''
 }
 
-const setPrepareFailure = ({ stage, message, readiness = {}, filterMode = 'strict' }) => {
+const setPrepareFailure = ({ stage, kind = 'prepare_runtime', message, readiness = {}, filterMode = 'strict' }) => {
   const resolvedStage = stage === 'config' ? 'config' : 'prepare'
   prepareFailure.value = {
     stage: resolvedStage,
+    kind,
     title: t(resolvedStage === 'config' ? 'step2.configFailureTitle' : 'step2.prepareFailureTitle'),
     message: message || t(resolvedStage === 'config' ? 'step2.configFailureMessage' : 'step2.prepareFailureMessage'),
     readiness,
@@ -904,13 +922,13 @@ const setPrepareFailure = ({ stage, message, readiness = {}, filterMode = 'stric
   phase.value = resolvedStage === 'config' ? 2 : 1
 }
 
-const handlePrepareFailure = ({ stage, message, readiness = {}, filterMode = 'strict', attemptId = activePrepareAttemptId.value }) => {
+const handlePrepareFailure = ({ stage, kind = 'prepare_runtime', message, readiness = {}, filterMode = 'strict', attemptId = activePrepareAttemptId.value }) => {
   if (isStaleAttempt(attemptId)) return
   invalidatePrepareAttempt()
   stopPolling()
   stopProfilesPolling()
   stopConfigPolling()
-  setPrepareFailure({ stage, message, readiness, filterMode })
+  setPrepareFailure({ stage, kind, message, readiness, filterMode })
   addLog(`준비 실패: ${prepareFailure.value.message}`)
   emit('update-status', 'error')
 }
@@ -982,7 +1000,8 @@ const startPrepareSimulation = async ({ forceRegenerate = false, entityMatchMode
 
     if (!(res.success && res.data)) {
       handlePrepareFailure({
-        stage: 'prepare',
+        stage: res.data?.failure_stage || 'prepare',
+        kind: res.data?.failure_kind || 'prepare_runtime',
         message: res.error || t('step2.prepareFailureMessage'),
         readiness: res.data?.entity_readiness || {},
         filterMode: res.data?.entity_filter_mode || matchMode,
@@ -1021,6 +1040,7 @@ const startPrepareSimulation = async ({ forceRegenerate = false, entityMatchMode
   } catch (err) {
     handlePrepareFailure({
       stage: 'prepare',
+      kind: 'prepare_runtime',
       message: err.message || t('step2.prepareFailureMessage'),
       filterMode: matchMode,
       attemptId
@@ -1075,7 +1095,8 @@ const pollPrepareStatus = async (attemptId = activePrepareAttemptId.value) => {
 
       if (data.status === 'failed' || data.status === 'cancelled') {
         handlePrepareFailure({
-          stage: phase.value >= 2 ? 'config' : 'prepare',
+          stage: data.failure_stage || 'prepare',
+          kind: data.failure_kind || 'prepare_runtime',
           message: data.failure_reason || data.error || t('step2.prepareFailureMessage'),
           readiness: data.entity_readiness || {},
           filterMode: data.entity_filter_mode || entityMatchMode.value,
@@ -1214,7 +1235,8 @@ const fetchConfigRealtime = async (attemptId = activePrepareAttemptId.value) => 
 
       if (data.generation_stage === 'failed') {
         handlePrepareFailure({
-          stage: 'config',
+          stage: data.failure_stage || 'config',
+          kind: data.failure_kind || 'config_generation',
           message: data.failure_reason || t('step2.configFailureMessage'),
           readiness: data.entity_readiness || {},
           filterMode: data.entity_filter_mode || entityMatchMode.value,
@@ -1278,7 +1300,8 @@ const loadPreparedData = async (attemptId = activePrepareAttemptId.value) => {
     if (res.success && res.data) {
       if (res.data.generation_stage === 'failed') {
         handlePrepareFailure({
-          stage: 'config',
+          stage: res.data.failure_stage || 'config',
+          kind: res.data.failure_kind || 'config_generation',
           message: res.data.failure_reason || t('step2.configFailureMessage'),
           readiness: res.data.entity_readiness || {},
           filterMode: res.data.entity_filter_mode || entityMatchMode.value,
