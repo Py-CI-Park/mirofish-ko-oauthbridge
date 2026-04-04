@@ -18,6 +18,45 @@ logger = get_logger('mirofish.zep_entity_reader')
 # 用于泛型返回类型
 T = TypeVar('T')
 
+ACTOR_KEYWORD_TYPES = [
+    ("개인", "개인"),
+    ("투자자", "개인"),
+    ("트레이더", "개인"),
+    ("운영자", "커뮤니티"),
+    ("커뮤니티", "커뮤니티"),
+    ("조직", "조직"),
+    ("기관", "조직"),
+    ("미디어", "미디어"),
+    ("분석가", "전문가"),
+    ("전문가", "전문가"),
+]
+
+ACTOR_TYPE_PRIORITY = {
+    "조직": 3,
+    "미디어": 3,
+    "전문가": 3,
+    "커뮤니티": 2,
+    "개인": 1,
+}
+
+ACTOR_FIELD_WEIGHTS = {
+    "name": 3,
+    "summary": 2,
+    "attributes": 1,
+}
+
+NON_ACTOR_KEYWORDS = (
+    "지표",
+    "변수",
+    "함수",
+    "수식",
+    "조건",
+    "indicator",
+    "ratio",
+    "signal",
+    "strategy",
+)
+
 
 @dataclass
 class EntityNode:
@@ -48,7 +87,7 @@ class EntityNode:
         for label in self.labels:
             if label not in ["Entity", "Node"]:
                 return label
-        return None
+        return self.attributes.get("derived_entity_type")
 
 
 @dataclass
@@ -58,6 +97,7 @@ class FilteredEntities:
     entity_types: Set[str]
     total_count: int
     filtered_count: int
+    readiness: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -65,6 +105,7 @@ class FilteredEntities:
             "entity_types": list(self.entity_types),
             "total_count": self.total_count,
             "filtered_count": self.filtered_count,
+            "readiness": self.readiness,
         }
 
 
@@ -212,11 +253,81 @@ class ZepEntityReader:
             logger.warning(f"获取节点 {node_uuid} 的边失败: {str(e)}")
             return []
     
+    @staticmethod
+    def _get_custom_labels(labels: List[str]) -> List[str]:
+        return [label for label in labels if label not in ["Entity", "Node"]]
+
+    @staticmethod
+    def _increment_reason(rejection_reasons: Dict[str, int], reason: str) -> None:
+        rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+
+    @staticmethod
+    def _build_text_blob(node: Dict[str, Any]) -> str:
+        return " ".join(
+            part
+            for part in ZepEntityReader._iter_text_sections(node).values()
+            if part
+        )
+
+    @staticmethod
+    def _iter_text_sections(node: Dict[str, Any]) -> Dict[str, str]:
+        attributes = node.get("attributes", {}) or {}
+        attribute_parts = []
+        if isinstance(attributes, dict):
+            for key, value in attributes.items():
+                attribute_parts.append(str(key))
+                attribute_parts.append(str(value))
+        else:
+            attribute_parts.append(str(attributes))
+
+        return {
+            "name": str(node.get("name", "")).lower(),
+            "summary": str(node.get("summary", "")).lower(),
+            "attributes": " ".join(attribute_parts).lower(),
+        }
+
+    def _derive_entity_type_from_text(self, node: Dict[str, Any]) -> Optional[str]:
+        text_sections = self._iter_text_sections(node)
+        matched_scores: Dict[str, int] = {}
+        for keyword, entity_type in ACTOR_KEYWORD_TYPES:
+            for section_name, section_text in text_sections.items():
+                if keyword in section_text:
+                    matched_scores[entity_type] = matched_scores.get(entity_type, 0) + (
+                        ACTOR_FIELD_WEIGHTS.get(section_name, 0)
+                        * ACTOR_TYPE_PRIORITY.get(entity_type, 0)
+                    )
+
+        if matched_scores:
+            return max(
+                matched_scores,
+                key=lambda entity_type: matched_scores[entity_type],
+            )
+
+        text = self._build_text_blob(node)
+        if any(keyword in text for keyword in NON_ACTOR_KEYWORDS):
+            return None
+
+        return None
+
+    def _matches_defined_type(
+        self,
+        entity_type: str,
+        defined_entity_types: Optional[List[str]],
+        rejection_reasons: Dict[str, int],
+    ) -> bool:
+        if not defined_entity_types:
+            return True
+        if entity_type in defined_entity_types:
+            return True
+        self._increment_reason(rejection_reasons, "entity_type_mismatch")
+        return False
+
     def filter_defined_entities(
         self, 
         graph_id: str,
         defined_entity_types: Optional[List[str]] = None,
-        enrich_with_edges: bool = True
+        enrich_with_edges: bool = True,
+        match_mode: str = "strict"
     ) -> FilteredEntities:
         """
         筛选出符合预定义实体类型的节点
@@ -224,16 +335,22 @@ class ZepEntityReader:
         筛选逻辑：
         - 如果节点的Labels只有一个"Entity"，说明这个实体不符合我们预定义的类型，跳过
         - 如果节点的Labels包含除"Entity"和"Node"之外的标签，说明符合预定义类型，保留
+        - relaxed模式下，无标签节点可通过名称/摘要/属性中的actor-like文本推断类型
         
         Args:
             graph_id: 图谱ID
             defined_entity_types: 预定义的实体类型列表（可选，如果提供则只保留这些类型）
             enrich_with_edges: 是否获取每个实体的相关边信息
+            match_mode: 匹配模式，支持 strict / relaxed
             
         Returns:
             FilteredEntities: 过滤后的实体集合
         """
         logger.info(f"开始筛选图谱 {graph_id} 的实体...")
+
+        normalized_match_mode = (match_mode or "strict").lower()
+        if normalized_match_mode not in {"strict", "relaxed"}:
+            raise ValueError(f"不支持的 match_mode: {match_mode}")
         
         # 获取所有节点
         all_nodes = self.get_all_nodes(graph_id)
@@ -248,25 +365,44 @@ class ZepEntityReader:
         # 筛选符合条件的实体
         filtered_entities = []
         entity_types_found = set()
+        labels_present_count = 0
+        relaxed_candidate_count = 0
+        rejection_reasons: Dict[str, int] = {
+            "entity_type_mismatch": 0,
+            "missing_actor_labels": 0,
+            "non_actor_text": 0,
+        }
         
         for node in all_nodes:
             labels = node.get("labels", [])
             
             # 筛选逻辑：Labels必须包含除"Entity"和"Node"之外的标签
-            custom_labels = [l for l in labels if l not in ["Entity", "Node"]]
+            custom_labels = self._get_custom_labels(labels)
+            entity_attributes = dict(node.get("attributes", {}) or {})
             
-            if not custom_labels:
-                # 只有默认标签，跳过
-                continue
-            
-            # 如果指定了预定义类型，检查是否匹配
-            if defined_entity_types:
-                matching_labels = [l for l in custom_labels if l in defined_entity_types]
-                if not matching_labels:
-                    continue
-                entity_type = matching_labels[0]
-            else:
+            if custom_labels:
+                labels_present_count += 1
                 entity_type = custom_labels[0]
+                if not self._matches_defined_type(entity_type, defined_entity_types, rejection_reasons):
+                    continue
+            else:
+                derived_entity_type = self._derive_entity_type_from_text(node)
+                if derived_entity_type:
+                    relaxed_candidate_count += 1
+
+                if normalized_match_mode == "strict":
+                    self._increment_reason(rejection_reasons, "missing_actor_labels")
+                    continue
+
+                if not derived_entity_type:
+                    self._increment_reason(rejection_reasons, "non_actor_text")
+                    continue
+
+                if not self._matches_defined_type(derived_entity_type, defined_entity_types, rejection_reasons):
+                    continue
+
+                entity_attributes["derived_entity_type"] = derived_entity_type
+                entity_type = derived_entity_type
             
             entity_types_found.add(entity_type)
             
@@ -276,7 +412,7 @@ class ZepEntityReader:
                 name=node["name"],
                 labels=labels,
                 summary=node["summary"],
-                attributes=node["attributes"],
+                attributes=entity_attributes,
             )
             
             # 获取相关边和节点
@@ -320,6 +456,16 @@ class ZepEntityReader:
             
             filtered_entities.append(entity)
         
+        readiness = {
+            "match_mode": normalized_match_mode,
+            "total_nodes": total_count,
+            "matched_entities": len(filtered_entities),
+            "labels_present_count": labels_present_count,
+            "labels_present_ratio": (labels_present_count / total_count) if total_count else 0.0,
+            "relaxed_candidate_count": relaxed_candidate_count,
+            "rejection_reasons": rejection_reasons,
+        }
+
         logger.info(f"筛选完成: 总节点 {total_count}, 符合条件 {len(filtered_entities)}, "
                    f"实体类型: {entity_types_found}")
         
@@ -328,6 +474,7 @@ class ZepEntityReader:
             entity_types=entity_types_found,
             total_count=total_count,
             filtered_count=len(filtered_entities),
+            readiness=readiness,
         )
     
     def get_entity_with_context(
