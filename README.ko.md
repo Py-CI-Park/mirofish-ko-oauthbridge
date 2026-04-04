@@ -217,7 +217,7 @@ npm run dashboard:worker:auto
 
 ## 첫 실행 추천
 
-업로드 전에 [시뮬레이션 입력 가이드](./docs/simulation-input-guide-ko.md)를 먼저 읽으면 `좋은 입력`과 `필터 완화 재시도` 흐름을 더 쉽게 맞출 수 있습니다.
+업로드 전에 [시뮬레이션 입력 가이드](./docs/simulation-input-guide-ko.md)를 먼저 읽으면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 흐름을 더 쉽게 맞출 수 있습니다.
 
 1. 먼저 `examples/scenarios/ko/` 또는 `examples/scenarios/en/`의 짧은 seed로 가볍게 시작한다
 2. 그 문서 하나만 먼저 업로드한다

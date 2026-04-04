@@ -65,7 +65,7 @@ npm run dev:all
 
 ## 6. 첫 테스트 방법
 
-업로드 전에 [시뮬레이션 입력 가이드](./simulation-input-guide-ko.md)를 먼저 읽어 두면 `좋은 입력`과 `필터 완화 재시도` 기준을 바로 맞추기 쉽습니다.
+업로드 전에 [시뮬레이션 입력 가이드](./simulation-input-guide-ko.md)를 먼저 읽어 두면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 기준을 바로 맞추기 쉽습니다.
 
 1. `examples/scenarios/ko/`에서 시나리오 하나 선택
 2. MiroFish 홈에서 해당 문서를 업로드
