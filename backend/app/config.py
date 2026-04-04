@@ -11,15 +11,16 @@ from dotenv import dotenv_values, load_dotenv
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 project_root_env = os.path.join(project_root, '.env')
 project_root_env_local = os.path.join(project_root, '.env.local')
+runtime_env_keys = set(os.environ.keys())
 
 if os.path.exists(project_root_env):
     for key, value in dotenv_values(project_root_env).items():
-        if value is not None and key not in os.environ:
+        if value is not None and key not in runtime_env_keys:
             os.environ[key] = value
 
 if os.path.exists(project_root_env_local):
     for key, value in dotenv_values(project_root_env_local).items():
-        if value is not None and key not in os.environ:
+        if value is not None and key not in runtime_env_keys:
             os.environ[key] = value
 
 if not os.path.exists(project_root_env) and not os.path.exists(project_root_env_local):

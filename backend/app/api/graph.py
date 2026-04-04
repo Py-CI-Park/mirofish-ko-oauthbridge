@@ -12,7 +12,7 @@ from flask import request, jsonify
 from . import graph_bp
 from ..config import Config
 from ..services.ontology_generator import OntologyGenerator
-from ..services.graph_builder import GraphBuilderService
+from ..services.graph_builder import GraphBuilderService, OntologyApplyError
 from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
@@ -475,6 +475,7 @@ def build_graph():
         # 启动后台任务
         def build_task():
             build_logger = get_logger('mirofish.build')
+            graph_id = None
             try:
                 build_logger.info(f"[{task_id}] 开始构建图谱...")
                 task_manager.update_task(
@@ -514,10 +515,25 @@ def build_graph():
                 # 设置本体
                 task_manager.update_task(
                     task_id,
-                    message="设置本体定义...",
+                    message="Validating and applying ontology...",
                     progress=15
                 )
-                builder.set_ontology(graph_id, ontology)
+                try:
+                    builder.apply_ontology_with_cleanup(graph_id, ontology)
+                except OntologyApplyError as exc:
+                    build_logger.error(
+                        f"[{task_id}] Ontology validation/apply failed for graph_id={graph_id}: {exc}"
+                    )
+                    build_logger.debug(traceback.format_exc())
+
+                    if exc.cleanup_succeeded:
+                        build_logger.info(
+                            f"[{task_id}] Graph cleanup after ontology failure succeeded: graph_id={graph_id}"
+                        )
+                        project.graph_id = None
+                        ProjectManager.save_project(project)
+
+                    raise
                 
                 # 添加文本（progress_callback 签名是 (msg, progress_ratio)）
                 def add_progress_callback(msg, progress_ratio):

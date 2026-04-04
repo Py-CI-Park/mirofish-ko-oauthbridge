@@ -561,7 +561,7 @@ const checkBridgeBeforeOntology = async () => {
       bridge?.loginStatus ? `loginStatus=${bridge.loginStatus}` : null,
       bridge?.cliAvailable === false ? 'cliAvailable=false' : null
     ].filter(Boolean).join(', ')
-    throw new Error(`?? OAuth ???? ??? ? ????. bridge-health ??? ??? ???${details ? ` (${details})` : ''}.`)
+    throw new Error(`로컬 OAuth 브리지를 사용할 수 없습니다. bridge-health 상태를 확인해 주세요${details ? ` (${details})` : ''}.`)
   }
 
   if (bridge.busy) {

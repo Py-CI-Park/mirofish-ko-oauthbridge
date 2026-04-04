@@ -16,6 +16,7 @@ from zep_cloud import EpisodeData, EntityEdgeSourceTarget
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from .ontology_normalizer import normalize_ontology_for_zep
 from .text_processor import TextProcessor
 
 
@@ -34,6 +35,34 @@ class GraphInfo:
             "edge_count": self.edge_count,
             "entity_types": self.entity_types,
         }
+
+
+class OntologyApplyError(RuntimeError):
+    """Raised when ontology application fails after graph creation."""
+
+    def __init__(
+        self,
+        graph_id: str,
+        cause: Exception,
+        cleanup_error: Optional[Exception] = None,
+    ):
+        self.graph_id = graph_id
+        self.cause = cause
+        self.cleanup_error = cleanup_error
+        self.cleanup_succeeded = cleanup_error is None
+
+        if cleanup_error is None:
+            message = (
+                f"Ontology apply failed for graph {graph_id}: {cause}. "
+                "Graph cleanup succeeded."
+            )
+        else:
+            message = (
+                f"Ontology apply failed for graph {graph_id}: {cause}. "
+                f"Graph cleanup also failed: {cleanup_error}"
+            )
+
+        super().__init__(message)
 
 
 class GraphBuilderService:
@@ -104,6 +133,7 @@ class GraphBuilderService:
         batch_size: int
     ):
         """图谱构建工作线程"""
+        graph_id = None
         try:
             self.task_manager.update_task(
                 task_id,
@@ -121,7 +151,7 @@ class GraphBuilderService:
             )
             
             # 2. 设置本体
-            self.set_ontology(graph_id, ontology)
+            self.apply_ontology_with_cleanup(graph_id, ontology)
             self.task_manager.update_task(
                 task_id,
                 progress=15,
@@ -215,10 +245,17 @@ class GraphBuilderService:
             if attr_name.lower() in RESERVED_NAMES:
                 return f"entity_{attr_name}"
             return attr_name
+
+        try:
+            normalized_ontology = normalize_ontology_for_zep(ontology)
+        except Exception as exc:
+            raise ValueError(
+                f"Ontology normalization failed before Zep set_ontology for graph {graph_id}: {exc}"
+            ) from exc
         
         # 动态创建实体类型
         entity_types = {}
-        for entity_def in ontology.get("entity_types", []):
+        for entity_def in normalized_ontology.get("entity_types", []):
             name = entity_def["name"]
             description = entity_def.get("description", f"A {name} entity.")
             
@@ -242,7 +279,7 @@ class GraphBuilderService:
         
         # 动态创建边类型
         edge_definitions = {}
-        for edge_def in ontology.get("edge_types", []):
+        for edge_def in normalized_ontology.get("edge_types", []):
             name = edge_def["name"]
             description = edge_def.get("description", f"A {name} relationship.")
             
@@ -279,11 +316,33 @@ class GraphBuilderService:
         
         # 调用Zep API设置本体
         if entity_types or edge_definitions:
-            self.client.graph.set_ontology(
-                graph_ids=[graph_id],
-                entities=entity_types if entity_types else None,
-                edges=edge_definitions if edge_definitions else None,
-            )
+            try:
+                self.client.graph.set_ontology(
+                    graph_ids=[graph_id],
+                    entities=entity_types if entity_types else None,
+                    edges=edge_definitions if edge_definitions else None,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Zep set_ontology failed for graph {graph_id}: {exc}"
+                ) from exc
+
+    def apply_ontology_with_cleanup(self, graph_id: str, ontology: Dict[str, Any]):
+        """Apply ontology and delete the graph if apply fails."""
+        try:
+            self.set_ontology(graph_id, ontology)
+        except Exception as exc:
+            cleanup_error = None
+            try:
+                self.delete_graph(graph_id)
+            except Exception as cleanup_exc:
+                cleanup_error = cleanup_exc
+
+            raise OntologyApplyError(
+                graph_id=graph_id,
+                cause=exc,
+                cleanup_error=cleanup_error,
+            ) from exc
     
     def add_text_batches(
         self,
