@@ -57,6 +57,8 @@ class SimulationState:
     entities_count: int = 0
     profiles_count: int = 0
     entity_types: List[str] = field(default_factory=list)
+    entity_filter_mode: str = "strict"
+    entity_readiness: Dict[str, Any] = field(default_factory=dict)
     
     # 配置生成信息
     config_generated: bool = False
@@ -88,6 +90,8 @@ class SimulationState:
             "entities_count": self.entities_count,
             "profiles_count": self.profiles_count,
             "entity_types": self.entity_types,
+            "entity_filter_mode": self.entity_filter_mode,
+            "entity_readiness": self.entity_readiness,
             "config_generated": self.config_generated,
             "config_reasoning": self.config_reasoning,
             "prepare_task_id": self.prepare_task_id,
@@ -110,6 +114,8 @@ class SimulationState:
             "entities_count": self.entities_count,
             "profiles_count": self.profiles_count,
             "entity_types": self.entity_types,
+            "entity_filter_mode": self.entity_filter_mode,
+            "entity_readiness": self.entity_readiness,
             "config_generated": self.config_generated,
             "error": self.error,
         }
@@ -181,6 +187,8 @@ class SimulationManager:
             entities_count=data.get("entities_count", 0),
             profiles_count=data.get("profiles_count", 0),
             entity_types=data.get("entity_types", []),
+            entity_filter_mode=data.get("entity_filter_mode", "strict"),
+            entity_readiness=data.get("entity_readiness", {}),
             config_generated=data.get("config_generated", False),
             config_reasoning=data.get("config_reasoning", ""),
             prepare_task_id=data.get("prepare_task_id"),
@@ -238,6 +246,7 @@ class SimulationManager:
         simulation_requirement: str,
         document_text: str,
         defined_entity_types: Optional[List[str]] = None,
+        entity_match_mode: str = "strict",
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
         parallel_profile_count: int = 3
@@ -269,6 +278,7 @@ class SimulationManager:
             raise ValueError(f"Simulation not found: {simulation_id}")
         
         try:
+            state.entity_filter_mode = (entity_match_mode or "strict").lower()
             state.status = SimulationStatus.PREPARING
             self._save_simulation_state(state)
             
@@ -286,11 +296,14 @@ class SimulationManager:
             filtered = reader.filter_defined_entities(
                 graph_id=state.graph_id,
                 defined_entity_types=defined_entity_types,
-                enrich_with_edges=True
+                enrich_with_edges=True,
+                match_mode=state.entity_filter_mode,
             )
             
             state.entities_count = filtered.filtered_count
             state.entity_types = list(filtered.entity_types)
+            state.entity_filter_mode = filtered.readiness.get("match_mode", state.entity_filter_mode)
+            state.entity_readiness = dict(filtered.readiness)
             
             if progress_callback:
                 progress_callback(
@@ -302,7 +315,10 @@ class SimulationManager:
             
             if filtered.filtered_count == 0:
                 state.status = SimulationStatus.FAILED
-                state.error = "No matching entities were found. Please check whether the graph was built correctly."
+                state.error = (
+                    "No matching entities were found for simulation preparation. "
+                    "Review the graph contents or try a different entity_match_mode."
+                )
                 self._save_simulation_state(state)
                 return state
             
