@@ -1,7 +1,7 @@
 """
-OASIS模拟管理器
-管理Twitter和Reddit双平台并行模拟
-使用预设脚本 + LLM智能生成配置参数
+OASIS 시뮬레이션 관리자
+Twitter와 Reddit 이중 플랫폼 시뮬레이션을 관리한다.
+프리셋 스크립트와 LLM 기반 설정 생성을 함께 사용한다.
 """
 
 import os
@@ -22,38 +22,38 @@ logger = get_logger('mirofish.simulation')
 
 
 class SimulationStatus(str, Enum):
-    """模拟状态"""
+    """시뮬레이션 상태"""
     CREATED = "created"
     PREPARING = "preparing"
     READY = "ready"
     RUNNING = "running"
     PAUSED = "paused"
-    STOPPED = "stopped"      # 模拟被手动停止
-    COMPLETED = "completed"  # 模拟自然完成
+    STOPPED = "stopped"      # 수동 중지됨
+    COMPLETED = "completed"  # 자연 종료됨
     FAILED = "failed"
 
 
 class PlatformType(str, Enum):
-    """平台类型"""
+    """플랫폼 유형"""
     TWITTER = "twitter"
     REDDIT = "reddit"
 
 
 @dataclass
 class SimulationState:
-    """模拟状态"""
+    """시뮬레이션 상태"""
     simulation_id: str
     project_id: str
     graph_id: str
     
-    # 平台启用状态
+    # 플랫폼 활성화 상태
     enable_twitter: bool = True
     enable_reddit: bool = True
     
-    # 状态
+    # 상태
     status: SimulationStatus = SimulationStatus.CREATED
     
-    # 准备阶段数据
+    # 준비 단계 데이터
     entities_count: int = 0
     profiles_count: int = 0
     entity_types: List[str] = field(default_factory=list)
@@ -62,26 +62,26 @@ class SimulationState:
     failure_stage: Optional[str] = None
     failure_kind: Optional[str] = None
     
-    # 配置生成信息
+    # 설정 생성 정보
     config_generated: bool = False
     config_reasoning: str = ""
     prepare_task_id: Optional[str] = None
     prepare_cancelled: bool = False
     
-    # 运行时数据
+    # 실행 중 데이터
     current_round: int = 0
     twitter_status: str = "not_started"
     reddit_status: str = "not_started"
     
-    # 时间戳
+    # 타임스탬프
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     
-    # 错误信息
+    # 오류 정보
     error: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """完整状态字典（内部使用）"""
+        """전체 상태 딕셔너리 (내부용)."""
         return {
             "simulation_id": self.simulation_id,
             "project_id": self.project_id,
@@ -109,7 +109,7 @@ class SimulationState:
         }
     
     def to_simple_dict(self) -> Dict[str, Any]:
-        """简化状态字典（API返回使用）"""
+        """축약 상태 딕셔너리 (API 응답용)."""
         return {
             "simulation_id": self.simulation_id,
             "project_id": self.project_id,
@@ -129,36 +129,36 @@ class SimulationState:
 
 class SimulationManager:
     """
-    模拟管理器
-    
-    核心功能：
-    1. 从Zep图谱读取实体并过滤
-    2. 生成OASIS Agent Profile
-    3. 使用LLM智能生成模拟配置参数
-    4. 准备预设脚本所需的所有文件
+    시뮬레이션 관리자
+
+    핵심 기능:
+    1. Zep 그래프에서 엔티티를 읽고 필터링한다.
+    2. OASIS Agent Profile을 생성한다.
+    3. LLM으로 시뮬레이션 설정 파라미터를 생성한다.
+    4. 프리셋 스크립트 실행에 필요한 파일을 준비한다.
     """
     
-    # 模拟数据存储目录
+    # 시뮬레이션 데이터 저장 디렉터리
     SIMULATION_DATA_DIR = os.path.join(
         os.path.dirname(__file__), 
         '../../uploads/simulations'
     )
     
     def __init__(self):
-        # 确保目录存在
+        # 디렉터리가 존재하도록 보장한다.
         os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
         
-        # 内存中的模拟状态缓存
+        # 메모리 내 시뮬레이션 상태 캐시
         self._simulations: Dict[str, SimulationState] = {}
     
     def _get_simulation_dir(self, simulation_id: str) -> str:
-        """获取模拟数据目录"""
+        """시뮬레이션 데이터 디렉터리를 반환한다."""
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
         os.makedirs(sim_dir, exist_ok=True)
         return sim_dir
     
     def _save_simulation_state(self, state: SimulationState):
-        """保存模拟状态到文件"""
+        """시뮬레이션 상태를 파일로 저장한다."""
         sim_dir = self._get_simulation_dir(state.simulation_id)
         state_file = os.path.join(sim_dir, "state.json")
         
@@ -170,7 +170,7 @@ class SimulationManager:
         self._simulations[state.simulation_id] = state
     
     def _load_simulation_state(self, simulation_id: str) -> Optional[SimulationState]:
-        """从文件加载模拟状态"""
+        """파일에서 시뮬레이션 상태를 불러온다."""
         if simulation_id in self._simulations:
             return self._simulations[simulation_id]
         
@@ -220,13 +220,13 @@ class SimulationManager:
         enable_reddit: bool = True,
     ) -> SimulationState:
         """
-        创建新的模拟
+        새 시뮬레이션을 생성한다.
         
         Args:
-            project_id: 项目ID
-            graph_id: Zep图谱ID
-            enable_twitter: 是否启用Twitter模拟
-            enable_reddit: 是否启用Reddit模拟
+            project_id: 프로젝트 ID
+            graph_id: Zep 그래프 ID
+            enable_twitter: Twitter 시뮬레이션 활성화 여부
+            enable_reddit: Reddit 시뮬레이션 활성화 여부
             
         Returns:
             SimulationState
@@ -279,23 +279,23 @@ class SimulationManager:
         parallel_profile_count: int = 3
     ) -> SimulationState:
         """
-        准备模拟环境（全程自动化）
-        
-        步骤：
-        1. 从Zep图谱读取并过滤实体
-        2. 为每个实体生成OASIS Agent Profile（可选LLM增强，支持并行）
-        3. 使用LLM智能生成模拟配置参数（时间、活跃度、发言频率等）
-        4. 保存配置文件和Profile文件
-        5. 复制预设脚本到模拟目录
+        시뮬레이션 환경을 준비한다. (전 과정 자동화)
+
+        단계:
+        1. Zep 그래프에서 엔티티를 읽고 필터링한다.
+        2. 각 엔티티의 OASIS Agent Profile을 생성한다. (선택적 LLM 보강, 병렬 지원)
+        3. LLM으로 시뮬레이션 설정 파라미터(시간, 활동성, 발언 빈도 등)를 생성한다.
+        4. 설정 파일과 Profile 파일을 저장한다.
+        5. 실행에 필요한 시뮬레이션 상태를 정리한다.
         
         Args:
-            simulation_id: 模拟ID
-            simulation_requirement: 模拟需求描述（用于LLM生成配置）
-            document_text: 原始文档内容（用于LLM理解背景）
-            defined_entity_types: 预定义的实体类型（可选）
-            use_llm_for_profiles: 是否使用LLM生成详细人设
-            progress_callback: 进度回调函数 (stage, progress, message)
-            parallel_profile_count: 并行生成人设的数量，默认3
+            simulation_id: 시뮬레이션 ID
+            simulation_requirement: 시뮬레이션 요구사항 설명 (LLM 설정 생성용)
+            document_text: 원문 문서 내용 (LLM 배경 이해용)
+            defined_entity_types: 미리 정의한 엔티티 유형 목록 (선택)
+            use_llm_for_profiles: LLM으로 상세 페르소나를 생성할지 여부
+            progress_callback: 진행률 콜백 함수 (stage, progress, message)
+            parallel_profile_count: 병렬 페르소나 생성 수, 기본 3
             
         Returns:
             SimulationState
@@ -315,7 +315,7 @@ class SimulationManager:
             
             sim_dir = self._get_simulation_dir(simulation_id)
             
-            # ========== 阶段1: 读取并过滤实体 ==========
+            # ========== 1단계: 엔티티 조회 및 필터링 ==========
             if progress_callback:
                 progress_callback("reading", 0, "Connecting to the Zep graph...")
             
@@ -356,7 +356,7 @@ class SimulationManager:
                 )
                 return state
             
-            # ========== 阶段2: 生成Agent Profile ==========
+            # ========== 2단계: Agent Profile 생성 ==========
             total_entities = len(filtered.entities)
             
             if progress_callback:
@@ -367,7 +367,7 @@ class SimulationManager:
                     total=total_entities
                 )
             
-            # 传入graph_id以启用Zep检索功能，获取更丰富的上下文
+            # graph_id를 전달해 Zep 조회를 활성화하고 더 풍부한 컨텍스트를 얻는다.
             generator = OasisProfileGenerator(graph_id=state.graph_id)
             
             def profile_progress(current, total, msg):
@@ -381,7 +381,7 @@ class SimulationManager:
                         item_name=msg
                     )
             
-            # 设置实时保存的文件路径（优先使用 Reddit JSON 格式）
+            # 실시간 저장 파일 경로 설정 (Reddit JSON 형식 우선)
             realtime_output_path = None
             realtime_platform = "reddit"
             if state.enable_reddit:
@@ -395,16 +395,16 @@ class SimulationManager:
                 entities=filtered.entities,
                 use_llm=use_llm_for_profiles,
                 progress_callback=profile_progress,
-                graph_id=state.graph_id,  # 传入graph_id用于Zep检索
-                parallel_count=parallel_profile_count,  # 并行生成数量
-                realtime_output_path=realtime_output_path,  # 实时保存路径
-                output_platform=realtime_platform  # 输出格式
+                graph_id=state.graph_id,  # Zep 조회를 위한 graph_id
+                parallel_count=parallel_profile_count,  # 병렬 생성 수
+                realtime_output_path=realtime_output_path,  # 실시간 저장 경로
+                output_platform=realtime_platform  # 출력 형식
             )
             
             state.profiles_count = len(profiles)
             
-            # 保存Profile文件（注意：Twitter使用CSV格式，Reddit使用JSON格式）
-            # Reddit 已经在生成过程中实时保存了，这里再保存一次确保完整性
+            # Profile 파일 저장 (Twitter는 CSV, Reddit는 JSON 형식 사용)
+            # Reddit는 생성 중 실시간 저장되지만, 여기서 한 번 더 저장해 완전성을 보장한다.
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 95, 
@@ -421,7 +421,7 @@ class SimulationManager:
                 )
             
             if state.enable_twitter:
-                # Twitter使用CSV格式！这是OASIS的要求
+                # Twitter는 CSV 형식을 사용해야 한다. (OASIS 요구사항)
                 generator.save_profiles(
                     profiles=profiles,
                     file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
@@ -436,7 +436,7 @@ class SimulationManager:
                     total=len(profiles)
                 )
             
-            # ========== 阶段3: LLM智能生成模拟配置 ==========
+            # ========== 3단계: LLM 기반 시뮬레이션 설정 생성 ==========
             failure_stage = "config"
             failure_kind = "config_generation"
             if progress_callback:
@@ -476,7 +476,7 @@ class SimulationManager:
                     total=3
                 )
             
-            # 保存配置文件
+            # 설정 파일 저장
             config_path = os.path.join(sim_dir, "simulation_config.json")
             with open(config_path, 'w', encoding='utf-8') as f:
                 f.write(sim_params.to_json())
@@ -492,10 +492,10 @@ class SimulationManager:
                     total=3
                 )
             
-            # 注意：运行脚本保留在 backend/scripts/ 目录，不再复制到模拟目录
-            # 启动模拟时，simulation_runner 会从 scripts/ 目录运行脚本
+            # 실행 스크립트는 backend/scripts/에 유지한다.
+            # 시뮬레이션 시작 시 simulation_runner가 scripts/ 디렉터리의 스크립트를 사용한다.
             
-            # 更新状态
+            # 상태 갱신
             state.status = SimulationStatus.READY
             self._save_simulation_state(state)
             
@@ -517,16 +517,16 @@ class SimulationManager:
             raise
     
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:
-        """获取模拟状态"""
+        """시뮬레이션 상태를 조회한다."""
         return self._load_simulation_state(simulation_id)
     
     def list_simulations(self, project_id: Optional[str] = None) -> List[SimulationState]:
-        """列出所有模拟"""
+        """전체 시뮬레이션 목록을 조회한다."""
         simulations = []
         
         if os.path.exists(self.SIMULATION_DATA_DIR):
             for sim_id in os.listdir(self.SIMULATION_DATA_DIR):
-                # 跳过隐藏文件（如 .DS_Store）和非目录文件
+                # 숨김 파일(.DS_Store 등)과 디렉터리가 아닌 파일은 건너뛴다.
                 sim_path = os.path.join(self.SIMULATION_DATA_DIR, sim_id)
                 if sim_id.startswith('.') or not os.path.isdir(sim_path):
                     continue
@@ -539,7 +539,7 @@ class SimulationManager:
         return simulations
     
     def get_profiles(self, simulation_id: str, platform: str = "reddit") -> List[Dict[str, Any]]:
-        """获取模拟的Agent Profile"""
+        """시뮬레이션의 Agent Profile을 조회한다."""
         state = self._load_simulation_state(simulation_id)
         if not state:
             raise ValueError(f"시뮬레이션이 없습니다: {simulation_id}")
@@ -554,7 +554,7 @@ class SimulationManager:
             return json.load(f)
     
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        """获取模拟配置"""
+        """시뮬레이션 설정을 조회한다."""
         sim_dir = self._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
         
@@ -565,7 +565,7 @@ class SimulationManager:
             return json.load(f)
     
     def get_run_instructions(self, simulation_id: str) -> Dict[str, str]:
-        """获取运行说明"""
+        """실행 안내를 반환한다."""
         sim_dir = self._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
         scripts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../scripts'))

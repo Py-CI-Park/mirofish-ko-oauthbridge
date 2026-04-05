@@ -1,6 +1,6 @@
 """
-图谱相关API路由
-采用项目上下文机制，服务端持久化状态
+그래프 관련 API 라우트
+프로젝트 컨텍스트를 사용하며, 서버 측에서 상태를 영속화한다.
 """
 
 import os
@@ -19,7 +19,7 @@ from ..utils.logger import get_logger
 from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 
-# 获取日志器
+# 로거 준비
 logger = get_logger('mirofish.api')
 
 
@@ -77,19 +77,19 @@ def try_recover_graph_building_project(project):
 
 
 def allowed_file(filename: str) -> bool:
-    """检查文件扩展名是否允许"""
+    """허용된 파일 확장자인지 확인한다."""
     if not filename or '.' not in filename:
         return False
     ext = os.path.splitext(filename)[1].lower().lstrip('.')
     return ext in Config.ALLOWED_EXTENSIONS
 
 
-# ============== 项目管理接口 ==============
+# ============== 프로젝트 관리 인터페이스 ==============
 
 @graph_bp.route('/project/<project_id>', methods=['GET'])
 def get_project(project_id: str):
     """
-    获取项目详情
+    프로젝트 상세 정보를 조회한다.
     """
     project = ProjectManager.get_project(project_id)
     
@@ -156,7 +156,7 @@ def get_project_inputs(project_id: str):
 @graph_bp.route('/project/list', methods=['GET'])
 def list_projects():
     """
-    列出所有项目
+    전체 프로젝트 목록을 조회한다.
     """
     limit = request.args.get('limit', 50, type=int)
     projects = [try_recover_graph_building_project(p) for p in ProjectManager.list_projects(limit=limit)]
@@ -171,7 +171,7 @@ def list_projects():
 @graph_bp.route('/project/<project_id>', methods=['DELETE'])
 def delete_project(project_id: str):
     """
-    删除项目
+    프로젝트를 삭제한다.
     """
     success = ProjectManager.delete_project(project_id)
     
@@ -190,7 +190,7 @@ def delete_project(project_id: str):
 @graph_bp.route('/project/<project_id>/reset', methods=['POST'])
 def reset_project(project_id: str):
     """
-    重置项目状态（用于重新构建图谱）
+    프로젝트 상태를 재설정한다. (그래프 재구축용)
     """
     project = ProjectManager.get_project(project_id)
     
@@ -200,7 +200,7 @@ def reset_project(project_id: str):
             "error": f"프로젝트가 없습니다: {project_id}"
         }), 404
     
-    # 重置到本体已生成状态
+    # 온톨로지 생성 완료 상태로 되돌린다.
     if project.ontology:
         project.status = ProjectStatus.ONTOLOGY_GENERATED
     else:
@@ -218,22 +218,22 @@ def reset_project(project_id: str):
     })
 
 
-# ============== 接口1：上传文件并生成本体 ==============
+# ============== 인터페이스 1: 파일 업로드 및 온톨로지 생성 ==============
 
 @graph_bp.route('/ontology/generate', methods=['POST'])
 def generate_ontology():
     """
-    接口1：上传文件，分析生成本体定义
+    인터페이스 1: 업로드된 파일을 분석해 온톨로지 정의를 생성한다.
     
-    请求方式：multipart/form-data
+    요청 형식: multipart/form-data
     
-    参数：
-        files: 上传的文件（PDF/MD/TXT），可多个
-        simulation_requirement: 模拟需求描述（必填）
-        project_name: 项目名称（可选）
-        additional_context: 额外说明（可选）
+    파라미터:
+        files: 업로드 파일(PDF/MD/TXT), 여러 개 가능
+        simulation_requirement: 시뮬레이션 요구사항 설명(필수)
+        project_name: 프로젝트 이름(선택)
+        additional_context: 추가 설명(선택)
         
-    返回：
+    반환:
         {
             "success": true,
             "data": {
@@ -251,7 +251,7 @@ def generate_ontology():
     try:
         logger.info("=== 온톨로지 정의 생성 시작 ===")
         
-        # 获取参数
+        # 파라미터 수집
         simulation_requirement = request.form.get('simulation_requirement', '')
         project_name = request.form.get('project_name', 'Unnamed Project')
         additional_context = request.form.get('additional_context', '')
@@ -265,7 +265,7 @@ def generate_ontology():
                 "error": "시뮬레이션 요구사항 설명(simulation_requirement)을 입력해 주세요"
             }), 400
         
-        # 获取上传的文件
+        # 업로드 파일 조회
         uploaded_files = request.files.getlist('files')
         if not uploaded_files or all(not f.filename for f in uploaded_files):
             return jsonify({
@@ -273,18 +273,18 @@ def generate_ontology():
                 "error": "문서 파일을 하나 이상 업로드해 주세요"
             }), 400
         
-        # 创建项目
+        # 프로젝트 생성
         project = ProjectManager.create_project(name=project_name)
         project.simulation_requirement = simulation_requirement
         logger.info(f"프로젝트 생성: {project.project_id}")
         
-        # 保存文件并提取文本
+        # 파일 저장 및 텍스트 추출
         document_texts = []
         all_text = ""
         
         for file in uploaded_files:
             if file and file.filename and allowed_file(file.filename):
-                # 保存文件到项目目录
+                # 파일을 프로젝트 디렉터리에 저장
                 file_info = ProjectManager.save_file_to_project(
                     project.project_id, 
                     file, 
@@ -295,7 +295,7 @@ def generate_ontology():
                     "size": file_info["size"]
                 })
                 
-                # 提取文本
+                # 텍스트 추출
                 text = FileParser.extract_text(file_info["path"])
                 text = TextProcessor.preprocess_text(text)
                 document_texts.append(text)
@@ -308,12 +308,12 @@ def generate_ontology():
                 "error": "처리된 문서가 없습니다. 파일 형식을 확인해 주세요"
             }), 400
         
-        # 保存提取的文本
+        # 추출한 텍스트 저장
         project.total_text_length = len(all_text)
         ProjectManager.save_extracted_text(project.project_id, all_text)
         logger.info(f"텍스트 추출 완료: 총 {len(all_text)}자")
         
-        # 生成本体
+        # 온톨로지 생성
         logger.info("LLM으로 온톨로지 정의 생성 중...")
         generator = OntologyGenerator()
         ontology = generator.generate(
@@ -322,7 +322,7 @@ def generate_ontology():
             additional_context=additional_context if additional_context else None
         )
         
-        # 保存本体到项目
+        # 생성한 온톨로지를 프로젝트에 저장
         entity_count = len(ontology.get("entity_types", []))
         edge_count = len(ontology.get("edge_types", []))
         logger.info(f"온톨로지 생성 완료: 엔티티 유형 {entity_count}개, 관계 유형 {edge_count}개")
@@ -356,22 +356,22 @@ def generate_ontology():
         }), 500
 
 
-# ============== 接口2：构建图谱 ==============
+# ============== 인터페이스 2: 그래프 구축 ==============
 
 @graph_bp.route('/build', methods=['POST'])
 def build_graph():
     """
-    接口2：根据project_id构建图谱
+    인터페이스 2: project_id 기준으로 그래프를 구축한다.
     
-    请求（JSON）：
+    요청(JSON):
         {
-            "project_id": "proj_xxxx",  // 必填，来自接口1
-            "graph_name": "图谱名称",    // 可选
-            "chunk_size": 500,          // 可选，默认500
-            "chunk_overlap": 50         // 可选，默认50
+            "project_id": "proj_xxxx",  // 필수, 인터페이스 1에서 생성
+            "graph_name": "그래프 이름", // 선택
+            "chunk_size": 500,          // 선택, 기본값 500
+            "chunk_overlap": 50         // 선택, 기본값 50
         }
         
-    返回：
+    반환:
         {
             "success": true,
             "data": {
@@ -384,7 +384,7 @@ def build_graph():
     try:
         logger.info("=== 그래프 구축 시작 ===")
         
-        # 检查配置
+        # 설정 확인
         errors = []
         if not Config.ZEP_API_KEY:
             errors.append("ZEP_API_KEY가 설정되지 않았습니다")
@@ -395,7 +395,7 @@ def build_graph():
                 "error": "설정 오류: " + "; ".join(errors)
             }), 500
         
-        # 解析请求
+        # 요청 파싱
         data = request.get_json() or {}
         project_id = data.get('project_id')
         logger.debug(f"요청 파라미터: project_id={project_id}")
@@ -406,7 +406,7 @@ def build_graph():
                 "error": "project_id를 입력해 주세요"
             }), 400
         
-        # 获取项目
+        # 프로젝트 조회
         project = ProjectManager.get_project(project_id)
         if not project:
             return jsonify({
@@ -414,8 +414,8 @@ def build_graph():
                 "error": f"프로젝트가 없습니다: {project_id}"
             }), 404
         
-        # 检查项目状态
-        force = data.get('force', False)  # 强制重新构建
+        # 프로젝트 상태 확인
+        force = data.get('force', False)  # 강제 재구축
         
         if project.status == ProjectStatus.CREATED:
             return jsonify({
@@ -430,23 +430,23 @@ def build_graph():
                 "task_id": project.graph_build_task_id
             }), 400
         
-        # 如果强制重建，重置状态
+        # 강제 재구축이면 상태를 되돌린다.
         if force and project.status in [ProjectStatus.GRAPH_BUILDING, ProjectStatus.FAILED, ProjectStatus.GRAPH_COMPLETED]:
             project.status = ProjectStatus.ONTOLOGY_GENERATED
             project.graph_id = None
             project.graph_build_task_id = None
             project.error = None
         
-        # 获取配置
+        # 설정값 조회
         graph_name = data.get('graph_name', project.name or 'MiroFish Graph')
         chunk_size = data.get('chunk_size', project.chunk_size or Config.DEFAULT_CHUNK_SIZE)
         chunk_overlap = data.get('chunk_overlap', project.chunk_overlap or Config.DEFAULT_CHUNK_OVERLAP)
         
-        # 更新项目配置
+        # 프로젝트 설정값 갱신
         project.chunk_size = chunk_size
         project.chunk_overlap = chunk_overlap
         
-        # 获取提取的文本
+        # 추출 텍스트 조회
         text = ProjectManager.get_extracted_text(project_id)
         if not text:
             return jsonify({
@@ -454,7 +454,7 @@ def build_graph():
                 "error": "추출된 텍스트를 찾을 수 없습니다"
             }), 400
         
-        # 获取本体
+        # 온톨로지 조회
         ontology = project.ontology
         if not ontology:
             return jsonify({
@@ -462,17 +462,17 @@ def build_graph():
                 "error": "온톨로지 정의를 찾을 수 없습니다"
             }), 400
         
-        # 创建异步任务
+        # 비동기 작업 생성
         task_manager = TaskManager()
         task_id = task_manager.create_task(f"그래프 구축: {graph_name}")
         logger.info(f"그래프 구축 작업 생성: task_id={task_id}, project_id={project_id}")
         
-        # 更新项目状态
+        # 프로젝트 상태 갱신
         project.status = ProjectStatus.GRAPH_BUILDING
         project.graph_build_task_id = task_id
         ProjectManager.save_project(project)
         
-        # 启动后台任务
+        # 백그라운드 작업 시작
         def build_task():
             build_logger = get_logger('mirofish.build')
             graph_id = None
@@ -484,10 +484,10 @@ def build_graph():
                     message="그래프 구축 서비스를 초기화하는 중..."
                 )
                 
-                # 创建图谱构建服务
+                # 그래프 구축 서비스 생성
                 builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
                 
-                # 分块
+                # 텍스트 분할
                 task_manager.update_task(
                     task_id,
                     message="텍스트를 분할하는 중...",
@@ -500,7 +500,7 @@ def build_graph():
                 )
                 total_chunks = len(chunks)
                 
-                # 创建图谱
+                # 그래프 생성
                 task_manager.update_task(
                     task_id,
                     message="Zep 그래프를 생성하는 중...",
@@ -508,11 +508,11 @@ def build_graph():
                 )
                 graph_id = builder.create_graph(name=graph_name)
                 
-                # 更新项目的graph_id
+                # 프로젝트 graph_id 갱신
                 project.graph_id = graph_id
                 ProjectManager.save_project(project)
                 
-                # 设置本体
+                # 온톨로지 적용
                 task_manager.update_task(
                     task_id,
                     message="Validating and applying ontology...",
@@ -535,7 +535,7 @@ def build_graph():
 
                     raise
                 
-                # 添加文本（progress_callback 签名是 (msg, progress_ratio)）
+                # 텍스트 추가 (progress_callback 시그니처: (msg, progress_ratio))
                 def add_progress_callback(msg, progress_ratio):
                     progress = 15 + int(progress_ratio * 40)  # 15% - 55%
                     task_manager.update_task(
@@ -557,7 +557,7 @@ def build_graph():
                     progress_callback=add_progress_callback
                 )
                 
-                # 等待Zep处理完成（查询每个episode的processed状态）
+                # Zep 처리 완료까지 대기 (각 episode의 processed 상태 조회)
                 task_manager.update_task(
                     task_id,
                     message="Zep 데이터 처리를 기다리는 중...",
@@ -574,7 +574,7 @@ def build_graph():
                 
                 builder._wait_for_episodes(episode_uuids, wait_progress_callback)
                 
-                # 获取图谱数据
+                # 그래프 데이터 조회
                 task_manager.update_task(
                     task_id,
                     message="그래프 데이터를 가져오는 중...",
@@ -582,7 +582,7 @@ def build_graph():
                 )
                 graph_data = builder.get_graph_data(graph_id)
                 
-                # 更新项目状态
+                # 프로젝트 상태 갱신
                 project.status = ProjectStatus.GRAPH_COMPLETED
                 ProjectManager.save_project(project)
                 
@@ -590,7 +590,7 @@ def build_graph():
                 edge_count = graph_data.get("edge_count", 0)
                 build_logger.info(f"[{task_id}] 그래프 구축 완료: graph_id={graph_id}, 노드={node_count}, 엣지={edge_count}")
                 
-                # 完成
+                # 완료 처리
                 task_manager.update_task(
                     task_id,
                     status=TaskStatus.COMPLETED,
@@ -606,7 +606,7 @@ def build_graph():
                 )
                 
             except Exception as e:
-                # 更新项目状态为失败
+                # 프로젝트 상태를 실패로 갱신
                 build_logger.error(f"[{task_id}] 그래프 구축 실패: {str(e)}")
                 build_logger.debug(traceback.format_exc())
                 
@@ -621,7 +621,7 @@ def build_graph():
                     error=traceback.format_exc()
                 )
         
-        # 启动后台线程
+        # 백그라운드 스레드 시작
         thread = threading.Thread(target=build_task, daemon=True)
         thread.start()
         
@@ -642,12 +642,12 @@ def build_graph():
         }), 500
 
 
-# ============== 任务查询接口 ==============
+# ============== 작업 조회 인터페이스 ==============
 
 @graph_bp.route('/task/<task_id>', methods=['GET'])
 def get_task(task_id: str):
     """
-    查询任务状态
+    작업 상태를 조회한다.
     """
     task = TaskManager().get_task(task_id)
     
@@ -666,7 +666,7 @@ def get_task(task_id: str):
 @graph_bp.route('/tasks', methods=['GET'])
 def list_tasks():
     """
-    列出所有任务
+    전체 작업 목록을 조회한다.
     """
     tasks = TaskManager().list_tasks()
     
@@ -677,12 +677,12 @@ def list_tasks():
     })
 
 
-# ============== 图谱数据接口 ==============
+# ============== 그래프 데이터 인터페이스 ==============
 
 @graph_bp.route('/data/<graph_id>', methods=['GET'])
 def get_graph_data(graph_id: str):
     """
-    获取图谱数据（节点和边）
+    그래프 데이터(노드/엣지)를 조회한다.
     """
     try:
         if not Config.ZEP_API_KEY:
@@ -710,7 +710,7 @@ def get_graph_data(graph_id: str):
 @graph_bp.route('/delete/<graph_id>', methods=['DELETE'])
 def delete_graph(graph_id: str):
     """
-    删除Zep图谱
+    Zep 그래프를 삭제한다.
     """
     try:
         if not Config.ZEP_API_KEY:
