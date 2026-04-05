@@ -883,6 +883,11 @@ const runtimeExact = {
   '请先选择一个模拟个体': { ko: '먼저 시뮬레이션 개체를 선택해 주세요', en: 'Please select a simulated individual first' },
   '无响应数据': { ko: '응답 데이터가 없습니다', en: 'No response data' },
   '报告数据加载完成': { ko: '리포트 데이터 로딩 완료', en: 'Report data loaded' }
+  ,
+  '=== 온톨로지 정의 생성 시작 ===': { ko: '=== 온톨로지 정의 생성 시작 ===', en: '=== Starting ontology definition generation ===' },
+  'LLM으로 온톨로지 정의 생성 중...': { ko: 'LLM으로 온톨로지 정의 생성 중...', en: 'Generating ontology definition with the LLM...' },
+  '=== 그래프 구축 시작 ===': { ko: '=== 그래프 구축 시작 ===', en: '=== Starting graph build ===' },
+  '그래프 구축 완료': { ko: '그래프 구축 완료', en: 'Graph build completed' }
 }
 
 const runtimeRules = [
@@ -957,7 +962,17 @@ const runtimeRules = [
     en: ([, graphId]) => `Fetching all edges for graph ${graphId}...`
   },
   {
+    regex: /^그래프 조회: (.+)의 전체 엣지를 가져오는 중\.\.\.$/,
+    ko: ([, graphId]) => `그래프 ${graphId}의 전체 엣지를 가져오는 중...`,
+    en: ([, graphId]) => `Fetching all edges for graph ${graphId}...`
+  },
+  {
     regex: /^获取到 (\d+) 条边$/,
+    ko: ([, count]) => `${count}개의 엣지를 가져왔습니다`,
+    en: ([, count]) => `Fetched ${count} edges`
+  },
+  {
+    regex: /^총 (\d+)개 엣지를 가져왔습니다$/,
     ko: ([, count]) => `${count}개의 엣지를 가져왔습니다`,
     en: ([, count]) => `Fetched ${count} edges`
   },
@@ -977,9 +992,29 @@ const runtimeRules = [
     en: ([, graphId]) => `Fetching all nodes for graph ${graphId}...`
   },
   {
+    regex: /^그래프 조회: (.+)의 전체 노드를 가져오는 중\.\.\.$/,
+    ko: ([, graphId]) => `그래프 ${graphId}의 전체 노드를 가져오는 중...`,
+    en: ([, graphId]) => `Fetching all nodes for graph ${graphId}...`
+  },
+  {
     regex: /^获取到 (\d+) 个节点$/,
     ko: ([, count]) => `${count}개의 노드를 가져왔습니다`,
     en: ([, count]) => `Fetched ${count} nodes`
+  },
+  {
+    regex: /^총 (\d+)개 노드를 가져왔습니다$/,
+    ko: ([, count]) => `${count}개의 노드를 가져왔습니다`,
+    en: ([, count]) => `Fetched ${count} nodes`
+  },
+  {
+    regex: /^그래프 필터링 시작: (.+)의 엔티티를 검사합니다\.\.\.$/,
+    ko: ([, graphId]) => `그래프 ${graphId}의 엔티티를 필터링하는 중...`,
+    en: ([, graphId]) => `Filtering entities for graph ${graphId}...`
+  },
+  {
+    regex: /^필터링 완료: 총 노드 (\d+), 조건 충족 (\d+), 엔티티 유형: (.+)$/,
+    ko: ([, total, matched, types]) => `필터링 완료: 총 노드 ${total}, 조건 충족 ${matched}, 엔티티 유형: ${types}`,
+    en: ([, total, matched, types]) => `Filtering complete: total nodes ${total}, matched ${matched}, entity types: ${types}`
   },
   {
     regex: /^大纲规划完成，共(\d+)个章节$/,
@@ -1038,6 +1073,10 @@ const runtimeRules = [
   prefixRule('强制停止模拟异常: ', '강제 중지 예외: ', 'Force stop simulation exception: '),
   prefixRule('模拟实例已创建: ', '시뮬레이션 인스턴스 생성됨: ', 'Simulation instance created: '),
   prefixRule('准备任务已启动', '준비 작업이 시작되었습니다', 'Preparation task started'),
+  prefixRule('프로젝트 생성: ', '프로젝트 생성: ', 'Project created: '),
+  prefixRule('시뮬레이션 생성: ', '시뮬레이션 생성: ', 'Simulation created: '),
+  prefixRule('시뮬레이션 준비 실패: ', '시뮬레이션 준비 실패: ', 'Simulation prepare failed: '),
+  prefixRule('텍스트 추출 완료: 총 ', '텍스트 추출 완료: 총 ', 'Text extraction complete: '),
   prefixRule('从Zep图谱读取到 ', 'Zep 그래프에서 읽은 엔티티 수: ', 'Entities read from Zep graph: '),
   prefixRule('  └─ 实体类型: ', '  └─ 엔티티 유형: ', '  └─ Entity types: '),
   prefixRule('准备失败: ', '준비 실패: ', 'Preparation failed: '),
