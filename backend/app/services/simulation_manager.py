@@ -244,7 +244,7 @@ class SimulationManager:
         )
         
         self._save_simulation_state(state)
-        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
+        logger.info(f"시뮬레이션 생성: {simulation_id}, project={project_id}, graph={graph_id}")
         
         return state
 
@@ -499,13 +499,13 @@ class SimulationManager:
             state.status = SimulationStatus.READY
             self._save_simulation_state(state)
             
-            logger.info(f"模拟准备完成: {simulation_id}, "
+            logger.info(f"시뮬레이션 준비 완료: {simulation_id}, "
                        f"entities={state.entities_count}, profiles={state.profiles_count}")
             
             return state
             
         except Exception as e:
-            logger.error(f"模拟准备失败: {simulation_id}, error={str(e)}")
+            logger.error(f"시뮬레이션 준비 실패: {simulation_id}, error={str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             self._mark_failure(
@@ -542,7 +542,7 @@ class SimulationManager:
         """获取模拟的Agent Profile"""
         state = self._load_simulation_state(simulation_id)
         if not state:
-            raise ValueError(f"模拟不存在: {simulation_id}")
+            raise ValueError(f"시뮬레이션이 없습니다: {simulation_id}")
         
         sim_dir = self._get_simulation_dir(simulation_id)
         profile_path = os.path.join(sim_dir, f"{platform}_profiles.json")
@@ -580,10 +580,10 @@ class SimulationManager:
                 "parallel": f"python {scripts_dir}/run_parallel_simulation.py --config {config_path}",
             },
             "instructions": (
-                f"1. 激活conda环境: conda activate MiroFish\n"
-                f"2. 运行模拟 (脚本位于 {scripts_dir}):\n"
-                f"   - 单独运行Twitter: python {scripts_dir}/run_twitter_simulation.py --config {config_path}\n"
-                f"   - 单独运行Reddit: python {scripts_dir}/run_reddit_simulation.py --config {config_path}\n"
-                f"   - 并行运行双平台: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
+                f"1. conda 환경을 활성화합니다: conda activate MiroFish\n"
+                f"2. 시뮬레이션을 실행합니다 (스크립트 위치: {scripts_dir}):\n"
+                f"   - Twitter만 실행: python {scripts_dir}/run_twitter_simulation.py --config {config_path}\n"
+                f"   - Reddit만 실행: python {scripts_dir}/run_reddit_simulation.py --config {config_path}\n"
+                f"   - 두 플랫폼 병렬 실행: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
             )
         }

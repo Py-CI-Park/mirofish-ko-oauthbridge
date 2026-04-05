@@ -122,7 +122,7 @@ class ZepEntityReader:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or Config.ZEP_API_KEY
         if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
+            raise ValueError("ZEP_API_KEY가 설정되지 않았습니다")
         
         self.client = Zep(api_key=self.api_key)
     
@@ -155,13 +155,13 @@ class ZepEntityReader:
                 last_exception = e
                 if attempt < max_retries - 1:
                     logger.warning(
-                        f"Zep {operation_name} 第 {attempt + 1} 次尝试失败: {str(e)[:100]}, "
-                        f"{delay:.1f}秒后重试..."
+                        f"Zep {operation_name} 제 {attempt + 1}회 시도 실패: {str(e)[:100]}, "
+                        f"{delay:.1f}초 후 다시 시도합니다..."
                     )
                     time.sleep(delay)
                     delay *= 2  # 指数退避
                 else:
-                    logger.error(f"Zep {operation_name} 在 {max_retries} 次尝试后仍失败: {str(e)}")
+                    logger.error(f"Zep {operation_name} 총 {max_retries}회 시도 후에도 실패했습니다: {str(e)}")
         
         raise last_exception
     
@@ -175,7 +175,7 @@ class ZepEntityReader:
         Returns:
             节点列表
         """
-        logger.info(f"获取图谱 {graph_id} 的所有节点...")
+        logger.info(f"그래프 조회: {graph_id}의 전체 노드를 가져오는 중...")
 
         nodes = fetch_all_nodes(self.client, graph_id)
 
@@ -189,7 +189,7 @@ class ZepEntityReader:
                 "attributes": node.attributes or {},
             })
 
-        logger.info(f"共获取 {len(nodes_data)} 个节点")
+        logger.info(f"총 {len(nodes_data)}개 노드를 가져왔습니다")
         return nodes_data
 
     def get_all_edges(self, graph_id: str) -> List[Dict[str, Any]]:
@@ -202,7 +202,7 @@ class ZepEntityReader:
         Returns:
             边列表
         """
-        logger.info(f"获取图谱 {graph_id} 的所有边...")
+        logger.info(f"그래프 조회: {graph_id}의 전체 엣지를 가져오는 중...")
 
         edges = fetch_all_edges(self.client, graph_id)
 
@@ -217,7 +217,7 @@ class ZepEntityReader:
                 "attributes": edge.attributes or {},
             })
 
-        logger.info(f"共获取 {len(edges_data)} 条边")
+        logger.info(f"총 {len(edges_data)}개 엣지를 가져왔습니다")
         return edges_data
     
     def get_node_edges(self, node_uuid: str) -> List[Dict[str, Any]]:
@@ -234,7 +234,7 @@ class ZepEntityReader:
             # 使用重试机制调用Zep API
             edges = self._call_with_retry(
                 func=lambda: self.client.graph.node.get_entity_edges(node_uuid=node_uuid),
-                operation_name=f"获取节点边(node={node_uuid[:8]}...)"
+                operation_name=f"노드 엣지 조회(node={node_uuid[:8]}...)"
             )
             
             edges_data = []
@@ -250,7 +250,7 @@ class ZepEntityReader:
             
             return edges_data
         except Exception as e:
-            logger.warning(f"获取节点 {node_uuid} 的边失败: {str(e)}")
+            logger.warning(f"노드 {node_uuid}의 엣지 조회 실패: {str(e)}")
             return []
     
     @staticmethod
@@ -346,11 +346,11 @@ class ZepEntityReader:
         Returns:
             FilteredEntities: 过滤后的实体集合
         """
-        logger.info(f"开始筛选图谱 {graph_id} 的实体...")
+        logger.info(f"그래프 필터링 시작: {graph_id}의 엔티티를 검사합니다...")
 
         normalized_match_mode = (match_mode or "strict").lower()
         if normalized_match_mode not in {"strict", "relaxed"}:
-            raise ValueError(f"不支持的 match_mode: {match_mode}")
+            raise ValueError(f"지원하지 않는 match_mode입니다: {match_mode}")
         
         # 获取所有节点
         all_nodes = self.get_all_nodes(graph_id)
@@ -466,8 +466,8 @@ class ZepEntityReader:
             "rejection_reasons": rejection_reasons,
         }
 
-        logger.info(f"筛选完成: 总节点 {total_count}, 符合条件 {len(filtered_entities)}, "
-                   f"实体类型: {entity_types_found}")
+        logger.info(f"필터링 완료: 총 노드 {total_count}, 조건 충족 {len(filtered_entities)}, "
+                   f"엔티티 유형: {entity_types_found}")
         
         return FilteredEntities(
             entities=filtered_entities,
@@ -496,7 +496,7 @@ class ZepEntityReader:
             # 使用重试机制获取节点
             node = self._call_with_retry(
                 func=lambda: self.client.graph.node.get(uuid_=entity_uuid),
-                operation_name=f"获取节点详情(uuid={entity_uuid[:8]}...)"
+                operation_name=f"노드 상세 조회(uuid={entity_uuid[:8]}...)"
             )
             
             if not node:
@@ -554,7 +554,7 @@ class ZepEntityReader:
             )
             
         except Exception as e:
-            logger.error(f"获取实体 {entity_uuid} 失败: {str(e)}")
+            logger.error(f"엔티티 조회 실패: {entity_uuid} / {str(e)}")
             return None
     
     def get_entities_by_type(

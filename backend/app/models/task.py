@@ -148,7 +148,7 @@ class TaskManager:
             task_id,
             status=TaskStatus.COMPLETED,
             progress=100,
-            message="任务完成",
+            message="작업 완료",
             result=result
         )
     
@@ -157,7 +157,7 @@ class TaskManager:
         self.update_task(
             task_id,
             status=TaskStatus.FAILED,
-            message="任务失败",
+            message="작업 실패",
             error=error
         )
     
