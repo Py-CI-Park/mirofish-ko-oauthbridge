@@ -23,23 +23,23 @@ logger = get_logger('mirofish.oasis_profile')
 
 @dataclass
 class OasisAgentProfile:
-    """OASIS Agent Profile数据结构"""
-    # 通用字段
+    """OASIS Agent Profile 데이터 구조"""
+    # 공통 필드
     user_id: int
     user_name: str
     name: str
     bio: str
     persona: str
     
-    # 可选字段 - Reddit风格
+    # 선택 필드 - Reddit 스타일
     karma: int = 1000
     
-    # 可选字段 - Twitter风格
+    # 선택 필드 - Twitter 스타일
     friend_count: int = 100
     follower_count: int = 150
     statuses_count: int = 500
     
-    # 额外人设信息
+    # 추가 페르소나 정보
     age: Optional[int] = None
     gender: Optional[str] = None
     mbti: Optional[str] = None
@@ -47,17 +47,17 @@ class OasisAgentProfile:
     profession: Optional[str] = None
     interested_topics: List[str] = field(default_factory=list)
     
-    # 来源实体信息
+    # 원본 엔티티 정보
     source_entity_uuid: Optional[str] = None
     source_entity_type: Optional[str] = None
     
     created_at: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
     
     def to_reddit_format(self) -> Dict[str, Any]:
-        """转换为Reddit平台格式"""
+        """Reddit 플랫폼 형식으로 변환한다."""
         profile = {
             "user_id": self.user_id,
-            "username": self.user_name,  # OASIS 库要求字段名为 username（无下划线）
+            "username": self.user_name,  # OASIS 라이브러리는 username 필드명을 요구한다.
             "name": self.name,
             "bio": self.bio,
             "persona": self.persona,
@@ -65,7 +65,7 @@ class OasisAgentProfile:
             "created_at": self.created_at,
         }
         
-        # 添加额外人设信息（如果有）
+        # 추가 페르소나 정보가 있으면 포함
         if self.age:
             profile["age"] = self.age
         if self.gender:
@@ -82,10 +82,10 @@ class OasisAgentProfile:
         return profile
     
     def to_twitter_format(self) -> Dict[str, Any]:
-        """转换为Twitter平台格式"""
+        """Twitter 플랫폼 형식으로 변환한다."""
         profile = {
             "user_id": self.user_id,
-            "username": self.user_name,  # OASIS 库要求字段名为 username（无下划线）
+            "username": self.user_name,  # OASIS 라이브러리는 username 필드명을 요구한다.
             "name": self.name,
             "bio": self.bio,
             "persona": self.persona,
@@ -95,7 +95,7 @@ class OasisAgentProfile:
             "created_at": self.created_at,
         }
         
-        # 添加额外人设信息
+        # 추가 페르소나 정보가 있으면 포함
         if self.age:
             profile["age"] = self.age
         if self.gender:
@@ -112,7 +112,7 @@ class OasisAgentProfile:
         return profile
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为完整字典格式"""
+        """전체 딕셔너리 형식으로 변환한다."""
         return {
             "user_id": self.user_id,
             "user_name": self.user_name,
@@ -137,17 +137,17 @@ class OasisAgentProfile:
 
 class OasisProfileGenerator:
     """
-    OASIS Profile生成器
-    
-    将Zep图谱中的实体转换为OASIS模拟所需的Agent Profile
-    
-    优化特性：
-    1. 调用Zep图谱检索功能获取更丰富的上下文
-    2. 生成非常详细的人设（包括基本信息、职业经历、性格特征、社交媒体行为等）
-    3. 区分个人实体和抽象群体实体
+    OASIS Profile 생성기
+
+    Zep 그래프의 엔티티를 OASIS 시뮬레이션에 필요한 Agent Profile로 변환한다.
+
+    최적화 포인트:
+    1. Zep 그래프 검색을 사용해 더 풍부한 컨텍스트를 가져온다.
+    2. 기본 정보, 직업/경력, 성격 특성, 소셜 행동 등을 포함한 상세 페르소나를 생성한다.
+    3. 개인 엔티티와 추상 집단/기관 엔티티를 구분한다.
     """
     
-    # MBTI类型列表
+    # MBTI 유형 목록
     MBTI_TYPES = [
         "INTJ", "INTP", "ENTJ", "ENTP",
         "INFJ", "INFP", "ENFJ", "ENFP",
@@ -155,7 +155,7 @@ class OasisProfileGenerator:
         "ISTP", "ISFP", "ESTP", "ESFP"
     ]
     
-    # 常见国家列表
+    # 자주 쓰는 국가 목록
     COUNTRIES = [
         "대만", "중국", "일본", "미국", "영국", "독일",
         "프랑스", "캐나다", "호주", "인도", "대한민국"
@@ -203,7 +203,7 @@ class OasisProfileGenerator:
             base_url=self.base_url
         )
         
-        # Zep客户端用于检索丰富上下文
+        # 풍부한 컨텍스트 조회용 Zep 클라이언트
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
         self.graph_id = graph_id
@@ -212,7 +212,7 @@ class OasisProfileGenerator:
             try:
                 self.zep_client = Zep(api_key=self.zep_api_key)
             except Exception as e:
-                logger.warning(f"Zep客户端初始化失败: {e}")
+                logger.warning(f"Zep 클라이언트 초기화 실패: {e}")
     
     def generate_profile_from_entity(
         self, 
@@ -221,27 +221,27 @@ class OasisProfileGenerator:
         use_llm: bool = True
     ) -> OasisAgentProfile:
         """
-        从Zep实体生成OASIS Agent Profile
+        Zep 엔티티에서 OASIS Agent Profile을 생성한다.
         
         Args:
-            entity: Zep实体节点
-            user_id: 用户ID（用于OASIS）
-            use_llm: 是否使用LLM生成详细人设
+            entity: Zep 엔티티 노드
+            user_id: 사용자 ID (OASIS용)
+            use_llm: LLM으로 상세 페르소나를 생성할지 여부
             
         Returns:
             OasisAgentProfile
         """
         entity_type = entity.get_entity_type() or "Entity"
         
-        # 基础信息
+        # 기본 정보
         name = entity.name
         user_name = self._generate_username(name)
         
-        # 构建上下文信息
+        # 컨텍스트 정보 구성
         context = self._build_entity_context(entity)
         
         if use_llm:
-            # 使用LLM生成详细人设
+            # LLM으로 상세 페르소나 생성
             profile_data = self._generate_profile_with_llm(
                 entity_name=name,
                 entity_type=entity_type,
@@ -250,7 +250,7 @@ class OasisProfileGenerator:
                 context=context
             )
         else:
-            # 使用规则生成基础人设
+            # 규칙 기반으로 기본 페르소나 생성
             profile_data = self._generate_profile_rule_based(
                 entity_name=name,
                 entity_type=entity_type,
@@ -279,27 +279,27 @@ class OasisProfileGenerator:
         )
     
     def _generate_username(self, name: str) -> str:
-        """生成用户名"""
-        # 移除特殊字符，转换为小写
+        """사용자명을 생성한다."""
+        # 특수문자를 제거하고 소문자로 변환
         username = name.lower().replace(" ", "_")
         username = ''.join(c for c in username if c.isalnum() or c == '_')
         
-        # 添加随机后缀避免重复
+        # 중복 방지를 위한 랜덤 접미사 추가
         suffix = random.randint(100, 999)
         return f"{username}_{suffix}"
     
     def _search_zep_for_entity(self, entity: EntityNode) -> Dict[str, Any]:
         """
-        使用Zep图谱混合搜索功能获取实体相关的丰富信息
+        Zep 그래프 혼합 검색을 사용해 엔티티 관련 풍부한 정보를 얻는다.
         
-        Zep没有内置混合搜索接口，需要分别搜索edges和nodes然后合并结果。
-        使用并行请求同时搜索，提高效率。
+        Zep에는 혼합 검색 전용 인터페이스가 없으므로 edges와 nodes를 각각 검색해 합친다.
+        병렬 요청으로 동시에 검색해 효율을 높인다.
         
         Args:
-            entity: 实体节点对象
+            entity: 엔티티 노드 객체
             
         Returns:
-            包含facts, node_summaries, context的字典
+            facts, node_summaries, context를 포함한 딕셔너리
         """
         import concurrent.futures
         
@@ -314,15 +314,15 @@ class OasisProfileGenerator:
             "context": ""
         }
         
-        # 必须有graph_id才能进行搜索
+        # 검색을 하려면 graph_id가 반드시 있어야 한다.
         if not self.graph_id:
-            logger.debug(f"跳过Zep检索：未设置graph_id")
+            logger.debug("graph_id가 없어 Zep 검색을 건너뜁니다")
             return results
         
         comprehensive_query = f"关于{entity_name}的所有信息、活动、事件、关系和背景"
         
         def search_edges():
-            """搜索边（事实/关系）- 带重试机制"""
+            """엣지(사실/관계) 검색 - 재시도 포함"""
             max_retries = 3
             last_exception = None
             delay = 2.0
@@ -339,15 +339,15 @@ class OasisProfileGenerator:
                 except Exception as e:
                     last_exception = e
                     if attempt < max_retries - 1:
-                        logger.debug(f"Zep边搜索第 {attempt + 1} 次失败: {str(e)[:80]}, 重试中...")
+                        logger.debug(f"Zep 엣지 검색 제 {attempt + 1}회 실패: {str(e)[:80]}, 재시도 중...")
                         time.sleep(delay)
                         delay *= 2
                     else:
-                        logger.debug(f"Zep边搜索在 {max_retries} 次尝试后仍失败: {e}")
+                        logger.debug(f"Zep 엣지 검색이 {max_retries}회 시도 후에도 실패했습니다: {e}")
             return None
         
         def search_nodes():
-            """搜索节点（实体摘要）- 带重试机制"""
+            """노드(엔티티 요약) 검색 - 재시도 포함"""
             max_retries = 3
             last_exception = None
             delay = 2.0
@@ -364,24 +364,24 @@ class OasisProfileGenerator:
                 except Exception as e:
                     last_exception = e
                     if attempt < max_retries - 1:
-                        logger.debug(f"Zep节点搜索第 {attempt + 1} 次失败: {str(e)[:80]}, 重试中...")
+                        logger.debug(f"Zep 노드 검색 제 {attempt + 1}회 실패: {str(e)[:80]}, 재시도 중...")
                         time.sleep(delay)
                         delay *= 2
                     else:
-                        logger.debug(f"Zep节点搜索在 {max_retries} 次尝试后仍失败: {e}")
+                        logger.debug(f"Zep 노드 검색이 {max_retries}회 시도 후에도 실패했습니다: {e}")
             return None
         
         try:
-            # 并行执行edges和nodes搜索
+            # edges와 nodes 검색을 병렬 실행
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 edge_future = executor.submit(search_edges)
                 node_future = executor.submit(search_nodes)
                 
-                # 获取结果
+                # 결과 수집
                 edge_result = edge_future.result(timeout=30)
                 node_result = node_future.result(timeout=30)
             
-            # 处理边搜索结果
+            # 엣지 검색 결과 처리
             all_facts = set()
             if edge_result and hasattr(edge_result, 'edges') and edge_result.edges:
                 for edge in edge_result.edges:
@@ -389,45 +389,45 @@ class OasisProfileGenerator:
                         all_facts.add(edge.fact)
             results["facts"] = list(all_facts)
             
-            # 处理节点搜索结果
+            # 노드 검색 결과 처리
             all_summaries = set()
             if node_result and hasattr(node_result, 'nodes') and node_result.nodes:
                 for node in node_result.nodes:
                     if hasattr(node, 'summary') and node.summary:
                         all_summaries.add(node.summary)
                     if hasattr(node, 'name') and node.name and node.name != entity_name:
-                        all_summaries.add(f"相关实体: {node.name}")
+                        all_summaries.add(f"관련 엔티티: {node.name}")
             results["node_summaries"] = list(all_summaries)
             
-            # 构建综合上下文
+            # 종합 컨텍스트 구성
             context_parts = []
             if results["facts"]:
-                context_parts.append("事实信息:\n" + "\n".join(f"- {f}" for f in results["facts"][:20]))
+                context_parts.append("사실 정보:\n" + "\n".join(f"- {f}" for f in results["facts"][:20]))
             if results["node_summaries"]:
-                context_parts.append("相关实体:\n" + "\n".join(f"- {s}" for s in results["node_summaries"][:10]))
+                context_parts.append("관련 엔티티:\n" + "\n".join(f"- {s}" for s in results["node_summaries"][:10]))
             results["context"] = "\n\n".join(context_parts)
             
-            logger.info(f"Zep混合检索完成: {entity_name}, 获取 {len(results['facts'])} 条事实, {len(results['node_summaries'])} 个相关节点")
+            logger.info(f"Zep 혼합 검색 완료: {entity_name}, 사실 {len(results['facts'])}건, 관련 노드 {len(results['node_summaries'])}개 확보")
             
         except concurrent.futures.TimeoutError:
-            logger.warning(f"Zep检索超时 ({entity_name})")
+            logger.warning(f"Zep 검색 타임아웃 ({entity_name})")
         except Exception as e:
-            logger.warning(f"Zep检索失败 ({entity_name}): {e}")
+            logger.warning(f"Zep 검색 실패 ({entity_name}): {e}")
         
         return results
     
     def _build_entity_context(self, entity: EntityNode) -> str:
         """
-        构建实体的完整上下文信息
+        엔티티의 전체 컨텍스트 정보를 구성한다.
         
-        包括：
-        1. 实体本身的边信息（事实）
-        2. 关联节点的详细信息
-        3. Zep混合检索到的丰富信息
+        포함 요소:
+        1. 엔티티 자체의 엣지 정보(사실)
+        2. 연결 노드의 상세 정보
+        3. Zep 혼합 검색으로 얻은 추가 정보
         """
         context_parts = []
         
-        # 1. 添加实体属性信息
+        # 1. 엔티티 속성 정보 추가
         if entity.attributes:
             attrs = []
             for key, value in entity.attributes.items():
@@ -436,7 +436,7 @@ class OasisProfileGenerator:
             if attrs:
                 context_parts.append("### 实体属性\n" + "\n".join(attrs))
         
-        # 2. 添加相关边信息（事实/关系）
+        # 2. 관련 엣지 정보 추가 (사실/관계)
         existing_facts = set()
         if entity.related_edges:
             relationships = []
@@ -457,7 +457,7 @@ class OasisProfileGenerator:
             if relationships:
                 context_parts.append("### 相关事实和关系\n" + "\n".join(relationships))
         
-        # 3. 添加关联节点的详细信息
+        # 3. 연결 노드의 상세 정보 추가
         if entity.related_nodes:
             related_info = []
             for node in entity.related_nodes:  # 不限制数量
@@ -465,7 +465,7 @@ class OasisProfileGenerator:
                 node_labels = node.get("labels", [])
                 node_summary = node.get("summary", "")
                 
-                # 过滤掉默认标签
+                # 기본 라벨은 제외
                 custom_labels = [l for l in node_labels if l not in ["Entity", "Node"]]
                 label_str = f" ({', '.join(custom_labels)})" if custom_labels else ""
                 
@@ -477,17 +477,17 @@ class OasisProfileGenerator:
             if related_info:
                 context_parts.append("### 关联实体信息\n" + "\n".join(related_info))
         
-        # 4. 使用Zep混合检索获取更丰富的信息
+        # 4. Zep 혼합 검색으로 더 풍부한 정보 획득
         zep_results = self._search_zep_for_entity(entity)
         
         if zep_results.get("facts"):
             # 去重：排除已存在的事实
             new_facts = [f for f in zep_results["facts"] if f not in existing_facts]
             if new_facts:
-                context_parts.append("### Zep检索到的事实信息\n" + "\n".join(f"- {f}" for f in new_facts[:15]))
+                context_parts.append("### Zep 검색으로 얻은 사실 정보\n" + "\n".join(f"- {f}" for f in new_facts[:15]))
         
         if zep_results.get("node_summaries"):
-            context_parts.append("### Zep检索到的相关节点\n" + "\n".join(f"- {s}" for s in zep_results["node_summaries"][:10]))
+            context_parts.append("### Zep 검색으로 얻은 관련 노드\n" + "\n".join(f"- {s}" for s in zep_results["node_summaries"][:10]))
         
         return "\n\n".join(context_parts)
     
