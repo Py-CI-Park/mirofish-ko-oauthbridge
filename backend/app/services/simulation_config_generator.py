@@ -357,7 +357,7 @@ class SimulationConfigGenerator:
                 echo_chamber_strength=0.6
             )
 
-        # 构建最终参数
+        # 최종 파라미터 구성
         params = SimulationParameters(
             simulation_id=simulation_id,
             project_id=project_id,
@@ -390,18 +390,18 @@ class SimulationConfigGenerator:
 
         # 컨텍스트 구성
         context_parts = [
-            f"## 模拟需求\n{simulation_requirement}",
-            f"\n## 实体信息 ({len(entities)}个)\n{entity_summary}",
+            f"## 시뮬레이션 요구\n{simulation_requirement}",
+            f"\n## 엔티티 정보 ({len(entities)}개)\n{entity_summary}",
         ]
 
         current_length = sum(len(p) for p in context_parts)
-        remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500  # 留500字符余量
+        remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500  # 여유 500자 확보
 
         if remaining_length > 0 and document_text:
             doc_text = document_text[:remaining_length]
             if len(document_text) > remaining_length:
-                doc_text += "\n...(文档已截断)"
-            context_parts.append(f"\n## 原始文档内容\n{doc_text}")
+                doc_text += "\n...(문서가 잘렸습니다)"
+            context_parts.append(f"\n## 원본 문서 내용\n{doc_text}")
 
         return "\n".join(context_parts)
 
@@ -419,7 +419,7 @@ class SimulationConfigGenerator:
 
         for entity_type, type_entities in by_type.items():
             lines.append(f"\n### {entity_type} ({len(type_entities)}개)")
-            # 使用配置的显示数量和摘要长度
+            # 설정된 표시 수와 요약 길이 사용
             display_count = self.ENTITIES_PER_TYPE_DISPLAY
             summary_len = self.ENTITY_SUMMARY_LENGTH
             for e in type_entities[:display_count]:
@@ -480,36 +480,36 @@ class SimulationConfigGenerator:
         raise last_error or Exception("LLM 호출 실패")
 
     def _fix_truncated_json(self, content: str) -> str:
-        """修复被截断的JSON"""
+        """잘린 JSON을 복구한다."""
         content = content.strip()
 
-        # 计算未闭合的括号
+        # 닫히지 않은 괄호 수 계산
         open_braces = content.count('{') - content.count('}')
         open_brackets = content.count('[') - content.count(']')
 
-        # 检查是否有未闭合的字符串
+        # 닫히지 않은 문자열이 있는지 확인
         if content and content[-1] not in '",}]':
             content += '"'
 
-        # 闭合括号
+        # 괄호 닫기
         content += ']' * open_brackets
         content += '}' * open_braces
 
         return content
 
     def _try_fix_config_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """尝试修复配置JSON"""
+        """설정 JSON 복구를 시도한다."""
         import re
 
-        # 修复被截断的情况
+        # 잘린 경우 먼저 복구 시도
         content = self._fix_truncated_json(content)
 
-        # 提取JSON部分
+        # JSON 부분 추출
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             json_str = json_match.group()
 
-            # 移除字符串中的换行符
+            # 문자열 내부 줄바꿈 제거
             def fix_string(match):
                 s = match.group(0)
                 s = s.replace('\n', ' ').replace('\r', ' ')
@@ -521,7 +521,7 @@ class SimulationConfigGenerator:
             try:
                 return json.loads(json_str)
             except:
-                # 尝试移除所有控制字符
+                # 제어 문자 제거 시도
                 json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
                 json_str = re.sub(r'\s+', ' ', json_str)
                 try:
@@ -532,11 +532,11 @@ class SimulationConfigGenerator:
         return None
 
     def _generate_time_config(self, context: str, num_entities: int) -> Dict[str, Any]:
-        """生成时间配置"""
-        # 使用配置的上下文截断长度
+        """시간 설정을 생성한다."""
+        # 설정된 컨텍스트 절단 길이 사용
         context_truncated = context[:self.TIME_CONFIG_CONTEXT_LENGTH]
 
-        # 计算最大允许值（80%的agent数）
+        # 최대 허용값 계산
         max_agents_allowed = max(1, int(num_entities * 0.9))
 
         prompt = f"""아래 시뮬레이션 요구사항을 바탕으로 시간 시뮬레이션 설정 JSON을 생성하세요.
@@ -589,51 +589,51 @@ class SimulationConfigGenerator:
         try:
             return self._call_llm_with_retry(prompt, system_prompt)
         except Exception as e:
-            logger.warning(f"时间配置LLM生成失败: {e}, 使用默认配置")
+            logger.warning(f"시간 설정 LLM 생성 실패: {e}, 기본 설정을 사용합니다")
             return self._get_default_time_config(num_entities)
 
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
-        """获取默认时间配置（中国人作息）"""
+        """기본 시간 설정을 반환한다."""
         return {
             "total_simulation_hours": 72,
-            "minutes_per_round": 60,  # 每轮1小时，加快时间流速
+            "minutes_per_round": 60,  # 라운드당 1시간
             "agents_per_hour_min": max(1, num_entities // 15),
             "agents_per_hour_max": max(5, num_entities // 5),
             "peak_hours": [19, 20, 21, 22],
             "off_peak_hours": [0, 1, 2, 3, 4, 5],
             "morning_hours": [6, 7, 8],
             "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-            "reasoning": "使用默认中国人作息配置（每轮1小时）"
+            "reasoning": "기본 활동 시간 설정 사용(라운드당 1시간)"
         }
 
     def _parse_time_config(self, result: Dict[str, Any], num_entities: int) -> TimeSimulationConfig:
-        """解析时间配置结果，并验证agents_per_hour值不超过总agent数"""
-        # 获取原始值
+        """시간 설정 결과를 파싱하고 agents_per_hour가 총 agent 수를 넘지 않도록 검증한다."""
+        # 원본 값 조회
         agents_per_hour_min = result.get("agents_per_hour_min", max(1, num_entities // 15))
         agents_per_hour_max = result.get("agents_per_hour_max", max(5, num_entities // 5))
 
-        # 验证并修正：确保不超过总agent数
+        # 검증 및 보정: 전체 agent 수를 넘지 않도록 조정
         if agents_per_hour_min > num_entities:
-            logger.warning(f"agents_per_hour_min ({agents_per_hour_min}) 超过总Agent数 ({num_entities})，已修正")
+            logger.warning(f"agents_per_hour_min ({agents_per_hour_min}) 이 전체 Agent 수 ({num_entities})를 초과해 보정했습니다")
             agents_per_hour_min = max(1, num_entities // 10)
 
         if agents_per_hour_max > num_entities:
-            logger.warning(f"agents_per_hour_max ({agents_per_hour_max}) 超过总Agent数 ({num_entities})，已修正")
+            logger.warning(f"agents_per_hour_max ({agents_per_hour_max}) 이 전체 Agent 수 ({num_entities})를 초과해 보정했습니다")
             agents_per_hour_max = max(agents_per_hour_min + 1, num_entities // 2)
 
-        # 确保 min < max
+        # min < max 보장
         if agents_per_hour_min >= agents_per_hour_max:
             agents_per_hour_min = max(1, agents_per_hour_max // 2)
-            logger.warning(f"agents_per_hour_min >= max，已修正为 {agents_per_hour_min}")
+            logger.warning(f"agents_per_hour_min >= max 상태라 {agents_per_hour_min}로 보정했습니다")
 
         return TimeSimulationConfig(
             total_simulation_hours=result.get("total_simulation_hours", 72),
-            minutes_per_round=result.get("minutes_per_round", 60),  # 默认每轮1小时
+            minutes_per_round=result.get("minutes_per_round", 60),  # 기본 라운드당 1시간
             agents_per_hour_min=agents_per_hour_min,
             agents_per_hour_max=agents_per_hour_max,
             peak_hours=result.get("peak_hours", [19, 20, 21, 22]),
             off_peak_hours=result.get("off_peak_hours", [0, 1, 2, 3, 4, 5]),
-            off_peak_activity_multiplier=0.05,  # 凌晨几乎无人
+            off_peak_activity_multiplier=0.05,  # 새벽에는 거의 활동 없음
             morning_hours=result.get("morning_hours", [6, 7, 8]),
             morning_activity_multiplier=0.4,
             work_hours=result.get("work_hours", list(range(9, 19))),
@@ -647,14 +647,14 @@ class SimulationConfigGenerator:
         simulation_requirement: str,
         entities: List[EntityNode]
     ) -> Dict[str, Any]:
-        """生成事件配置"""
+        """이벤트 설정을 생성한다."""
 
-        # 获取可用的实体类型列表，供 LLM 参考
+        # LLM 참고용 엔티티 유형 목록 구성
         entity_types_available = list(set(
             e.get_entity_type() or "Unknown" for e in entities
         ))
 
-        # 为每种类型列出代表性实体名称
+        # 각 유형별 대표 엔티티 이름 나열
         type_examples = {}
         for e in entities:
             etype = e.get_entity_type() or "Unknown"
@@ -668,7 +668,7 @@ class SimulationConfigGenerator:
             for t, examples in type_examples.items()
         ])
 
-        # 使用配置的上下文截断长度
+        # 설정된 컨텍스트 절단 길이 사용
         context_truncated = context[:self.EVENT_CONFIG_CONTEXT_LENGTH]
 
         prompt = f"""아래 시뮬레이션 요구사항을 바탕으로 사건 설정 JSON을 생성하세요.
@@ -706,16 +706,16 @@ class SimulationConfigGenerator:
         try:
             return self._call_llm_with_retry(prompt, system_prompt)
         except Exception as e:
-            logger.warning(f"事件配置LLM生成失败: {e}, 使用默认配置")
+            logger.warning(f"이벤트 설정 LLM 생성 실패: {e}, 기본 설정을 사용합니다")
             return {
                 "hot_topics": [],
                 "narrative_direction": "",
                 "initial_posts": [],
-                "reasoning": "使用默认配置"
+                "reasoning": "기본 설정 사용"
             }
 
     def _parse_event_config(self, result: Dict[str, Any]) -> EventConfig:
-        """解析事件配置结果"""
+        """이벤트 설정 결과를 파싱한다."""
         return EventConfig(
             initial_posts=result.get("initial_posts", []),
             scheduled_events=[],
@@ -729,14 +729,14 @@ class SimulationConfigGenerator:
         agent_configs: List[AgentActivityConfig]
     ) -> EventConfig:
         """
-        为初始帖子分配合适的发布者 Agent
+        초기 게시물에 적절한 게시자 Agent를 배정한다.
 
-        根据每个帖子的 poster_type 匹配最合适的 agent_id
+        각 게시물의 poster_type에 맞는 agent_id를 찾는다.
         """
         if not event_config.initial_posts:
             return event_config
 
-        # 按实体类型建立 agent 索引
+        # 엔티티 유형별 agent 인덱스 구성
         agents_by_type: Dict[str, List[AgentActivityConfig]] = {}
         for agent in agent_configs:
             etype = agent.entity_type.lower()
@@ -744,7 +744,7 @@ class SimulationConfigGenerator:
                 agents_by_type[etype] = []
             agents_by_type[etype].append(agent)
 
-        # 类型映射表（处理 LLM 可能输出的不同格式）
+        # 유형 alias 테이블 (LLM 출력 변형 보정)
         type_aliases = {
             "official": ["official", "university", "governmentagency", "government"],
             "university": ["university", "official"],
@@ -756,7 +756,7 @@ class SimulationConfigGenerator:
             "person": ["person", "student", "alumni"],
         }
 
-        # 记录每种类型已使用的 agent 索引，避免重复使用同一个 agent
+        # 각 유형별로 이미 사용한 agent 인덱스를 기록
         used_indices: Dict[str, int] = {}
 
         updated_posts = []
@@ -764,17 +764,17 @@ class SimulationConfigGenerator:
             poster_type = post.get("poster_type", "").lower()
             content = post.get("content", "")
 
-            # 尝试找到匹配的 agent
+            # 매칭 가능한 agent 탐색
             matched_agent_id = None
 
-            # 1. 直接匹配
+            # 1. 직접 매칭
             if poster_type in agents_by_type:
                 agents = agents_by_type[poster_type]
                 idx = used_indices.get(poster_type, 0) % len(agents)
                 matched_agent_id = agents[idx].agent_id
                 used_indices[poster_type] = idx + 1
             else:
-                # 2. 使用别名匹配
+                # 2. alias 기반 매칭
                 for alias_key, aliases in type_aliases.items():
                     if poster_type in aliases or alias_key == poster_type:
                         for alias in aliases:
@@ -787,9 +787,9 @@ class SimulationConfigGenerator:
                     if matched_agent_id is not None:
                         break
 
-            # 3. 如果仍未找到，使用影响力最高的 agent
+            # 3. 그래도 못 찾으면 영향력이 가장 높은 agent 사용
             if matched_agent_id is None:
-                logger.warning(f"未找到类型 '{poster_type}' 的匹配 Agent，使用影响力最高的 Agent")
+                logger.warning(f"유형 '{poster_type}' 에 맞는 Agent를 찾지 못해 영향력이 가장 높은 Agent를 사용합니다")
                 if agent_configs:
                     # 按影响力排序，选择影响力最高的
                     sorted_agents = sorted(agent_configs, key=lambda a: a.influence_weight, reverse=True)
@@ -803,7 +803,7 @@ class SimulationConfigGenerator:
                 "poster_agent_id": matched_agent_id
             })
 
-            logger.info(f"初始帖子分配: poster_type='{poster_type}' -> agent_id={matched_agent_id}")
+            logger.info(f"초기 게시물 배정: poster_type='{poster_type}' -> agent_id={matched_agent_id}")
 
         event_config.initial_posts = updated_posts
         return event_config
@@ -815,9 +815,9 @@ class SimulationConfigGenerator:
         start_idx: int,
         simulation_requirement: str
     ) -> List[AgentActivityConfig]:
-        """分批生成Agent配置"""
+        """Agent 설정을 배치 단위로 생성한다."""
 
-        # 构建实体信息（使用配置的摘要长度）
+        # 엔티티 정보 구성 (설정된 요약 길이 사용)
         entity_list = []
         summary_len = self.AGENT_SUMMARY_LENGTH
         for i, e in enumerate(entities):
@@ -875,16 +875,16 @@ class SimulationConfigGenerator:
             result = self._call_llm_with_retry(prompt, system_prompt)
             llm_configs = {cfg["agent_id"]: cfg for cfg in result.get("agent_configs", [])}
         except Exception as e:
-            logger.warning(f"Agent配置批次LLM生成失败: {e}, 使用规则生成")
+            logger.warning(f"Agent 설정 배치 LLM 생성 실패: {e}, 규칙 기반 생성으로 대체합니다")
             llm_configs = {}
 
-        # 构建AgentActivityConfig对象
+        # AgentActivityConfig 객체 생성
         configs = []
         for i, entity in enumerate(entities):
             agent_id = start_idx + i
             cfg = llm_configs.get(agent_id, {})
 
-            # 如果LLM没有生成，使用规则生成
+            # LLM 결과가 없으면 규칙 기반 생성 사용
             if not cfg:
                 cfg = self._generate_agent_config_by_rule(entity)
 
@@ -911,7 +911,7 @@ class SimulationConfigGenerator:
         return configs
 
     def _generate_agent_config_by_rule(self, entity: EntityNode) -> Dict[str, Any]:
-        """基于规则生成单个Agent配置（中国人作息）"""
+        """규칙 기반으로 단일 Agent 설정을 생성한다."""
         entity_type = (entity.get_entity_type() or "Unknown").lower()
 
         if entity_type in ["university", "governmentagency", "ngo"]:

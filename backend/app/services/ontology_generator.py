@@ -164,7 +164,7 @@ class OntologyGenerator:
         # 텍스트가 5만자를 넘으면 잘라낸다. (LLM 입력에만 영향, 그래프 구축엔 영향 없음)
         if len(combined_text) > self.MAX_TEXT_LENGTH_FOR_LLM:
             combined_text = combined_text[:self.MAX_TEXT_LENGTH_FOR_LLM]
-            combined_text += f"\n\n...(原文共{original_length}字，已截取前{self.MAX_TEXT_LENGTH_FOR_LLM}字用于本体分析)..."
+            combined_text += f"\n\n...(원문 총 {original_length}자 중 앞의 {self.MAX_TEXT_LENGTH_FOR_LLM}자만 온톨로지 분석에 사용함)..."
         
         message = f"""## 시뮬레이션 요구
 
@@ -362,7 +362,7 @@ class OntologyGenerator:
             code_lines.append('')
         
         # 유형 딕셔너리 생성
-        code_lines.append('# ============== 类型配置 ==============')
+        code_lines.append('# ============== 유형 구성 ==============')
         code_lines.append('')
         code_lines.append('ENTITY_TYPES = {')
         for entity in ontology.get("entity_types", []):
@@ -378,7 +378,7 @@ class OntologyGenerator:
         code_lines.append('}')
         code_lines.append('')
         
-        # 生成边的source_targets映射
+        # 엣지 source_targets 매핑 생성
         code_lines.append('EDGE_SOURCE_TARGETS = {')
         for edge in ontology.get("edge_types", []):
             name = edge["name"]
