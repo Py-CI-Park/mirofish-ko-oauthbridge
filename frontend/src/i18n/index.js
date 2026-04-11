@@ -819,6 +819,8 @@ function prefixRule(prefix, koPrefix, enPrefix) {
   }
 }
 
+// 레거시 중국어 로그와 새 한국어 로그를 모두 지원한다.
+// 오래 저장된 데이터가 source key를 계속 참조할 수 있으므로 지금은 삭제하지 않는다.
 const runtimeExact = {
   '未来预测报告': { ko: '미래 예측 보고서', en: 'Future Forecast Report' },
   '基于模拟预测的未来趋势与风险分析': { ko: '시뮬레이션 기반 미래 추세 및 리스크 분석', en: 'Future trend and risk analysis based on simulation forecasts' },
