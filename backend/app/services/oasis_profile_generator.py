@@ -319,7 +319,7 @@ class OasisProfileGenerator:
             logger.debug("graph_id가 없어 Zep 검색을 건너뜁니다")
             return results
         
-        comprehensive_query = f"关于{entity_name}的所有信息、活动、事件、关系和背景"
+        comprehensive_query = f"{entity_name}에 대한 모든 정보, 활동, 사건, 관계, 배경"
         
         def search_edges():
             """엣지(사실/관계) 검색 - 재시도 포함"""
@@ -434,7 +434,7 @@ class OasisProfileGenerator:
                 if value and str(value).strip():
                     attrs.append(f"- {key}: {value}")
             if attrs:
-                context_parts.append("### 实体属性\n" + "\n".join(attrs))
+                context_parts.append("### 엔티티 속성\n" + "\n".join(attrs))
         
         # 2. 관련 엣지 정보 추가 (사실/관계)
         existing_facts = set()
@@ -450,12 +450,12 @@ class OasisProfileGenerator:
                     existing_facts.add(fact)
                 elif edge_name:
                     if direction == "outgoing":
-                        relationships.append(f"- {entity.name} --[{edge_name}]--> (相关实体)")
+                        relationships.append(f"- {entity.name} --[{edge_name}]--> (관련 엔티티)")
                     else:
-                        relationships.append(f"- (相关实体) --[{edge_name}]--> {entity.name}")
+                        relationships.append(f"- (관련 엔티티) --[{edge_name}]--> {entity.name}")
             
             if relationships:
-                context_parts.append("### 相关事实和关系\n" + "\n".join(relationships))
+                context_parts.append("### 관련 사실과 관계\n" + "\n".join(relationships))
         
         # 3. 연결 노드의 상세 정보 추가
         if entity.related_nodes:
@@ -475,7 +475,7 @@ class OasisProfileGenerator:
                     related_info.append(f"- **{node_name}**{label_str}")
             
             if related_info:
-                context_parts.append("### 关联实体信息\n" + "\n".join(related_info))
+                context_parts.append("### 연관 엔티티 정보\n" + "\n".join(related_info))
         
         # 4. Zep 혼합 검색으로 더 풍부한 정보 획득
         zep_results = self._search_zep_for_entity(entity)
