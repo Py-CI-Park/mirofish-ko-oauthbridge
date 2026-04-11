@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.services.oasis_profile_generator import OasisProfileGenerator
+from app.services.oasis_profile_generator import OasisAgentProfile, OasisProfileGenerator
 from app.services.zep_entity_reader import EntityNode
 
 
@@ -76,3 +76,28 @@ def test_entity_context_uses_korean_headings_and_relationship_placeholders():
     assert "(관련 엔티티)" in context
     assert "实体属性" not in context
     assert "相关实体" not in context
+
+
+def test_generated_profile_console_labels_are_korean(capsys):
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    profile = OasisAgentProfile(
+        user_id=1,
+        user_name="tester",
+        name="테스터",
+        bio="소개",
+        persona="상세 페르소나",
+        age=30,
+        gender="other",
+        mbti="ISTJ",
+        country="대한민국",
+        profession="테스트 계정",
+        interested_topics=["테스트"],
+    )
+
+    generator._print_generated_profile("테스터", "개인", profile)
+    output = capsys.readouterr().out
+
+    assert "사용자명" in output
+    assert "상세 페르소나" in output
+    assert "年龄" not in output
+    assert "用户名" not in output
