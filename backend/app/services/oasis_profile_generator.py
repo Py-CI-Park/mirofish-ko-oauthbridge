@@ -182,6 +182,9 @@ class OasisProfileGenerator:
         "미국": ["united states", "u.s.", "us ", "washington", "indo-pacific", "미국"],
         "대한민국": ["south korea", "korea", "seoul", "대한민국", "한국"],
     }
+
+    SUPPORTED_PERSONA_PROMPT_LANGUAGES = {"legacy", "ko", "en", "zh"}
+    SUPPORTED_PERSONA_OUTPUT_LANGUAGES = {"ko", "en"}
     
     def __init__(
         self, 
@@ -190,7 +193,9 @@ class OasisProfileGenerator:
         model_name: Optional[str] = None,
         zep_api_key: Optional[str] = None,
         graph_id: Optional[str] = None,
-        persona_prompt_locale: str = "legacy"
+        persona_prompt_locale: Optional[str] = None,
+        persona_prompt_language: Optional[str] = None,
+        persona_output_language: Optional[str] = None,
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -208,7 +213,12 @@ class OasisProfileGenerator:
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
         self.graph_id = graph_id
-        self.persona_prompt_locale = persona_prompt_locale
+        configured_prompt_language = persona_prompt_language or persona_prompt_locale or Config.LLM_PROMPT_LANGUAGE
+        self.persona_prompt_language = self._normalize_persona_prompt_language(configured_prompt_language)
+        self.persona_prompt_locale = self.persona_prompt_language
+        self.persona_output_language = self._normalize_persona_output_language(
+            persona_output_language or Config.LLM_OUTPUT_LANGUAGE
+        )
         
         if self.zep_api_key:
             try:
@@ -216,11 +226,41 @@ class OasisProfileGenerator:
             except Exception as e:
                 logger.warning(f"Zep 클라이언트 초기화 실패: {e}")
 
+    def _normalize_persona_prompt_language(self, value: Optional[str]) -> str:
+        language = (value or "legacy").strip().lower()
+        if language not in self.SUPPORTED_PERSONA_PROMPT_LANGUAGES:
+            supported = ", ".join(sorted(self.SUPPORTED_PERSONA_PROMPT_LANGUAGES))
+            raise ValueError(f"Unsupported persona prompt language: {value}. Supported values: {supported}")
+        return language
+
+    def _normalize_persona_output_language(self, value: Optional[str]) -> str:
+        language = (value or "ko").strip().lower()
+        if language not in self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES:
+            supported = ", ".join(sorted(self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES))
+            raise ValueError(f"Unsupported persona output language: {value}. Supported values: {supported}")
+        return language
+
+    def _prompt_language(self) -> str:
+        return getattr(self, "persona_prompt_language", getattr(self, "persona_prompt_locale", "legacy"))
+
+    def _output_language(self) -> str:
+        return getattr(self, "persona_output_language", "ko")
+
     def _empty_prompt_value(self) -> str:
-        return "없음" if getattr(self, "persona_prompt_locale", "legacy") == "ko" else "无"
+        language = self._prompt_language()
+        if language == "ko":
+            return "없음"
+        if language == "en":
+            return "None"
+        return "无"
 
     def _empty_context_value(self) -> str:
-        return "추가 컨텍스트 없음" if getattr(self, "persona_prompt_locale", "legacy") == "ko" else "无额外上下文"
+        language = self._prompt_language()
+        if language == "ko":
+            return "추가 컨텍스트 없음"
+        if language == "en":
+            return "No additional context"
+        return "无额外上下文"
     
     def generate_profile_from_entity(
         self, 
