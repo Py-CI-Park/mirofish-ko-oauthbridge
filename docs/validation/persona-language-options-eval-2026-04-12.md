@@ -167,7 +167,7 @@ Observed output:
 [llm:en->ko] elapsed=8.3s han_count=0 missing_fields=[]
 [llm:en->ko] keys=['age', 'bio', 'country', 'gender', 'interested_topics', 'mbti', 'persona', 'profession']
 [llm:en->ko] bio=시장 이슈와 수급 변화에 민감하게 반응하는 개인 투자자입니다. 커뮤니티에서 종목 의견과 뉴스 해석을 자주 나누며, 실전 경험을 바탕으로 빠르게 판단하는 편입니다.
-[llm:en->ko] persona=30대 후반의 한국 거주 개인 투자자로, 중견 제조업이나 서비스업에서 직장 생활을 하며 틈틈이 주식과 ETF를 병행해 온 사람이다. 대학교 졸업 후 사회생활을 시작한 뒤 저축만으로는 자산을 늘리기 어렵다는 경험을 하면서 투자에 관심을 갖게 되었고, 특히 시장 이슈가 주가에 즉시 반영되는 순간을 여러 번 겪으며 뉴스와 커뮤니티 반응을 함께 확인하는 습관이 생겼다. 성향은 ENTP에 가까운 편으로 보이며, 새 정보에 대한 반응이 
+[llm:en->ko] persona=30대 후반의 한국 거주 개인 투자자로, 중견 제조업이나 서비스업에서 직장 생활을 하며 틈틈이 주식과 ETF를 병행해 온 사람이다. 대학교 졸업 후 사회생활을 시작한 뒤 저축만으로는 자산을 늘리기 어렵다는 경험을 하면서 투자에 관심을 갖게 되었고, 특히 시장 이슈가 주가에 즉시 반영되는 순간을 여러 번 겪으며 뉴스와 커뮤니티 반응을 함께 확인하는 습관이 생겼다. 성향은 ENTP에 가까운 편으로 보이며, 새 정보에 대한 반응이
 [prompt:en->en] length=1461 han_count=0 missing_fields=[]
 [prompt:en->en] contains_legacy_empty=False
 [prompt:en->en] contains_korean_empty=False
