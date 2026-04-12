@@ -343,25 +343,31 @@ def test_try_fix_json_full_fallback_uses_english_defaults_when_output_language_i
 
 
 class _FakeCompletionResponse:
-    choices = [
-        SimpleNamespace(
-            finish_reason="stop",
-            message=SimpleNamespace(content='{"bio": "Short English bio", "age": 42, "gender": "other", "mbti": "INTJ"}'),
-        )
-    ]
+    def __init__(self, content):
+        self.choices = [
+            SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(content=content),
+            )
+        ]
 
 
 class _FakeCompletions:
+    def __init__(self, content='{"bio": "Short English bio", "age": 42, "gender": "other", "mbti": "INTJ"}'):
+        self.content = content
+
     def create(self, **kwargs):
-        return _FakeCompletionResponse()
+        return _FakeCompletionResponse(self.content)
 
 
 class _FakeChat:
-    completions = _FakeCompletions()
+    def __init__(self, content):
+        self.completions = _FakeCompletions(content)
 
 
 class _FakeOpenAIClient:
-    chat = _FakeChat()
+    def __init__(self, content='{"bio": "Short English bio", "age": 42, "gender": "other", "mbti": "INTJ"}'):
+        self.chat = _FakeChat(content)
 
 
 def test_llm_missing_fields_use_english_defaults_without_real_llm_call():
@@ -383,3 +389,28 @@ def test_llm_missing_fields_use_english_defaults_without_real_llm_call():
     assert profile["profession"] == "Individual account"
     assert profile["interested_topics"] == ["General issues", "Social trends"]
     assert profile["gender"] == "other"
+
+
+def test_generate_profile_partial_json_repair_uses_english_final_fallbacks():
+    generator = _make_language_generator("en")
+    generator.graph_id = None
+    generator.zep_client = None
+    generator.client = _FakeOpenAIClient('prefix {"bio": "English bio only"} suffix')
+    generator.model_name = "fake-model"
+
+    entity = EntityNode(
+        uuid="entity-1",
+        name="Repair Target",
+        labels=["person"],
+        summary="",
+        attributes={},
+    )
+
+    profile = generator.generate_profile_from_entity(entity, user_id=1, use_llm=True)
+
+    assert profile.bio == "English bio only"
+    assert profile.persona == "Repair Target is a person profile that participates in online discussion based on available context."
+    assert "유형의 시뮬레이션 개체" not in profile.persona
+    assert profile.country in generator.EN_COUNTRIES
+    assert profile.profession == "Individual account"
+    assert profile.interested_topics == ["General issues", "Social trends"]

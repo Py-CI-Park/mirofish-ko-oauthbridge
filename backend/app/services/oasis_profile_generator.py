@@ -306,6 +306,31 @@ class OasisProfileGenerator:
             return ["Public policy", "Community", "Official notices"]
         return ["General issues", "Social trends"]
 
+    def _complete_profile_defaults(
+        self,
+        profile_data: Dict[str, Any],
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str = "",
+        context: str = "",
+    ) -> Dict[str, Any]:
+        if not profile_data.get("bio"):
+            profile_data["bio"] = self._default_bio(entity_name, entity_type, entity_summary)
+        if not profile_data.get("persona"):
+            profile_data["persona"] = self._default_persona(entity_name, entity_type, entity_summary)
+        if not profile_data.get("country"):
+            profile_data["country"] = self._infer_country_label(entity_name, entity_type, entity_summary, context)
+        if not profile_data.get("profession"):
+            profile_data["profession"] = self._infer_profession_label(entity_type)
+
+        profile_data["interested_topics"] = self._normalize_topics(
+            profile_data.get("interested_topics", [])
+        )
+        if not profile_data["interested_topics"]:
+            profile_data["interested_topics"] = self._default_interested_topics(entity_type)
+
+        return profile_data
+
     def _empty_prompt_value(self) -> str:
         language = self._prompt_language()
         if language == "ko":
@@ -365,13 +390,20 @@ class OasisProfileGenerator:
                 entity_summary=entity.summary,
                 entity_attributes=entity.attributes
             )
+        profile_data = self._complete_profile_defaults(
+            profile_data=profile_data,
+            entity_name=name,
+            entity_type=entity_type,
+            entity_summary=entity.summary,
+            context=context,
+        )
         
         return OasisAgentProfile(
             user_id=user_id,
             user_name=user_name,
             name=name,
-            bio=profile_data.get("bio", f"{entity_type}: {name}"),
-            persona=profile_data.get("persona", entity.summary or f"{name}는 {entity_type} 유형의 시뮬레이션 개체입니다."),
+            bio=profile_data["bio"],
+            persona=profile_data["persona"],
             karma=profile_data.get("karma", random.randint(500, 5000)),
             friend_count=profile_data.get("friend_count", random.randint(50, 500)),
             follower_count=profile_data.get("follower_count", random.randint(100, 1000)),
@@ -379,9 +411,9 @@ class OasisProfileGenerator:
             age=profile_data.get("age"),
             gender=profile_data.get("gender"),
             mbti=profile_data.get("mbti"),
-            country=profile_data.get("country") or self._infer_country_label(name, entity_type, entity.summary, context),
-            profession=profile_data.get("profession") or self._infer_profession_label(entity_type),
-            interested_topics=self._normalize_topics(profile_data.get("interested_topics", [])),
+            country=profile_data["country"],
+            profession=profile_data["profession"],
+            interested_topics=profile_data["interested_topics"],
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
@@ -669,21 +701,9 @@ class OasisProfileGenerator:
                 # JSON 파싱 시도
                 try:
                     result = json.loads(content)
-                    
-                    # 필수 필드 검증
-                    if "bio" not in result or not result["bio"]:
-                        result["bio"] = self._default_bio(entity_name, entity_type, entity_summary)
-                    if "persona" not in result or not result["persona"]:
-                        result["persona"] = self._default_persona(entity_name, entity_type, entity_summary)
-                    if "country" not in result or not result["country"]:
-                        result["country"] = self._infer_country_label(entity_name, entity_type, entity_summary, context)
-                    if "profession" not in result or not result["profession"]:
-                        result["profession"] = self._infer_profession_label(entity_type)
-                    result["interested_topics"] = self._normalize_topics(result.get("interested_topics", []))
-                    if not result["interested_topics"]:
-                        result["interested_topics"] = self._default_interested_topics(entity_type)
-                    
-                    return result
+                    return self._complete_profile_defaults(
+                        result, entity_name, entity_type, entity_summary, context
+                    )
                     
                 except json.JSONDecodeError as je:
                     logger.warning(f"JSON 파싱 실패 (attempt {attempt+1}): {str(je)[:80]}")
@@ -692,7 +712,9 @@ class OasisProfileGenerator:
                     result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
                     if result.get("_fixed"):
                         del result["_fixed"]
-                        return result
+                        return self._complete_profile_defaults(
+                            result, entity_name, entity_type, entity_summary, context
+                        )
                     
                     last_error = je
                     
@@ -758,6 +780,9 @@ class OasisProfileGenerator:
             # 4. 파싱 시도
             try:
                 result = json.loads(json_str)
+                result = self._complete_profile_defaults(
+                    result, entity_name, entity_type, entity_summary
+                )
                 result["_fixed"] = True
                 return result
             except json.JSONDecodeError as e:
@@ -768,6 +793,9 @@ class OasisProfileGenerator:
                     # 모든 연속 공백 치환
                     json_str = re.sub(r'\s+', ' ', json_str)
                     result = json.loads(json_str)
+                    result = self._complete_profile_defaults(
+                        result, entity_name, entity_type, entity_summary
+                    )
                     result["_fixed"] = True
                     return result
                 except:
@@ -783,24 +811,20 @@ class OasisProfileGenerator:
         # 의미 있는 내용을 추출했다면 복구된 것으로 표시한다.
         if bio_match or persona_match:
             logger.info("손상된 JSON에서 일부 정보를 추출했습니다.")
-            return {
+            result = {
                 "bio": bio,
                 "persona": persona,
-                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
-                "profession": self._infer_profession_label(entity_type),
-                "interested_topics": self._default_interested_topics(entity_type),
-                "_fixed": True
+                "_fixed": True,
             }
+            return self._complete_profile_defaults(
+                result, entity_name, entity_type, entity_summary
+            )
         
         # 7. 완전히 실패하면 기본 구조를 반환한다.
         logger.warning("JSON 복구 실패. 기본 구조를 반환합니다.")
-        return {
-            "bio": self._default_bio(entity_name, entity_type, entity_summary),
-            "persona": self._default_persona(entity_name, entity_type, entity_summary),
-            "country": self._infer_country_label(entity_name, entity_type, entity_summary),
-            "profession": self._infer_profession_label(entity_type),
-            "interested_topics": self._default_interested_topics(entity_type),
-        }
+        return self._complete_profile_defaults(
+            {}, entity_name, entity_type, entity_summary
+        )
     
     def _output_language_name(self) -> str:
         return "English" if self._output_language() == "en" else "Korean"
