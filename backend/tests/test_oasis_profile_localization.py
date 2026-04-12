@@ -170,9 +170,13 @@ def test_persona_language_defaults_preserve_legacy_prompt_and_korean_output():
 
 
 def test_persona_prompt_language_en_uses_english_prompt_without_renaming_json_fields():
-    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
-    generator.persona_prompt_language = "en"
-    generator.persona_output_language = "en"
+    generator = OasisProfileGenerator(
+        api_key="test-key",
+        base_url="http://127.0.0.1:8787/v1",
+        model_name="gpt-5.4-mini",
+        persona_prompt_language="en",
+        persona_output_language="en",
+    )
 
     prompt = generator._build_group_persona_prompt(
         entity_name="Test Institute",
@@ -182,6 +186,8 @@ def test_persona_prompt_language_en_uses_english_prompt_without_renaming_json_fi
         context="",
     )
 
+    assert generator.persona_prompt_language == "en"
+    assert generator.persona_output_language == "en"
     assert "Create a detailed official account profile" in prompt
     assert "Entity attributes: None" in prompt
     assert "Context information:\nNo additional context" in prompt
