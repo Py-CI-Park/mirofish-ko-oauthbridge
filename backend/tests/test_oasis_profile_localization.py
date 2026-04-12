@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.oasis_profile_generator import OasisAgentProfile, OasisProfileGenerator
 from app.services.zep_entity_reader import EntityNode
 
@@ -139,3 +141,114 @@ def test_persona_prompt_locale_ko_uses_korean_placeholders_without_renaming_json
     assert "无额外上下文" not in prompt
     for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
         assert field_name in prompt
+
+
+def test_persona_language_defaults_preserve_legacy_prompt_and_korean_output():
+    generator = OasisProfileGenerator(
+        api_key="test-key",
+        base_url="http://127.0.0.1:8787/v1",
+        model_name="gpt-5.4-mini",
+    )
+
+    prompt = generator._build_individual_persona_prompt(
+        entity_name="테스터",
+        entity_type="개인",
+        entity_summary="",
+        entity_attributes={},
+        context="",
+    )
+    system_prompt = generator._get_system_prompt(True)
+
+    assert generator.persona_prompt_language == "legacy"
+    assert generator.persona_output_language == "ko"
+    assert "엔터티 속성: 无" in prompt
+    assert "문맥 정보:\n无额外上下文" in prompt
+    assert "bio, persona, profession, interested_topics, country" in system_prompt
+    assert "한국어로 작성" in system_prompt
+    for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
+        assert field_name in prompt
+
+
+def test_persona_prompt_language_en_uses_english_prompt_without_renaming_json_fields():
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator.persona_prompt_language = "en"
+    generator.persona_output_language = "en"
+
+    prompt = generator._build_group_persona_prompt(
+        entity_name="Test Institute",
+        entity_type="organization",
+        entity_summary="Official account explaining a public issue",
+        entity_attributes={},
+        context="",
+    )
+
+    assert "Create a detailed official account profile" in prompt
+    assert "Entity attributes: None" in prompt
+    assert "Context information:\nNo additional context" in prompt
+    assert "Write string values in English" in prompt
+    assert "无额外上下文" not in prompt
+    assert "无" not in prompt
+    for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
+        assert field_name in prompt
+
+
+def test_persona_output_language_ko_instruction_is_independent_from_english_prompt_language():
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator.persona_prompt_language = "en"
+    generator.persona_output_language = "ko"
+
+    prompt = generator._build_individual_persona_prompt(
+        entity_name="Investor",
+        entity_type="person",
+        entity_summary="A retail investor reacting to market news",
+        entity_attributes={},
+        context="",
+    )
+    system_prompt = generator._get_system_prompt(True)
+
+    assert "Create a detailed social media user persona" in prompt
+    assert "Write string values in Korean" in prompt
+    assert "bio, persona, profession, interested_topics, country must be written in Korean" in system_prompt
+    for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
+        assert field_name in prompt
+
+
+def test_persona_prompt_locale_alias_still_sets_prompt_language_for_compatibility():
+    generator = OasisProfileGenerator(
+        api_key="test-key",
+        base_url="http://127.0.0.1:8787/v1",
+        model_name="gpt-5.4-mini",
+        persona_prompt_locale="ko",
+    )
+
+    prompt = generator._build_group_persona_prompt(
+        entity_name="테스트 기관",
+        entity_type="조직",
+        entity_summary="",
+        entity_attributes={},
+        context="",
+    )
+
+    assert generator.persona_prompt_language == "ko"
+    assert "엔터티 속성: 없음" in prompt
+    assert "문맥 정보:\n추가 컨텍스트 없음" in prompt
+
+
+def test_invalid_persona_prompt_language_raises_clear_error():
+    with pytest.raises(ValueError, match="Unsupported persona prompt language"):
+        OasisProfileGenerator(
+            api_key="test-key",
+            base_url="http://127.0.0.1:8787/v1",
+            model_name="gpt-5.4-mini",
+            persona_prompt_language="fr",
+        )
+
+
+def test_invalid_persona_output_language_raises_clear_error():
+    with pytest.raises(ValueError, match="Unsupported persona output language"):
+        OasisProfileGenerator(
+            api_key="test-key",
+            base_url="http://127.0.0.1:8787/v1",
+            model_name="gpt-5.4-mini",
+            persona_output_language="zh",
+        )
