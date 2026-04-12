@@ -258,3 +258,34 @@ def test_invalid_persona_output_language_raises_clear_error():
             model_name="gpt-5.4-mini",
             persona_output_language="zh",
         )
+
+
+def test_empty_persona_prompt_language_raises_clear_error():
+    with pytest.raises(ValueError, match="Unsupported persona prompt language"):
+        OasisProfileGenerator(
+            api_key="test-key",
+            base_url="http://127.0.0.1:8787/v1",
+            model_name="gpt-5.4-mini",
+            persona_prompt_language="",
+        )
+
+
+def test_empty_persona_prompt_language_does_not_fall_back_to_locale_alias():
+    with pytest.raises(ValueError, match="Unsupported persona prompt language"):
+        OasisProfileGenerator(
+            api_key="test-key",
+            base_url="http://127.0.0.1:8787/v1",
+            model_name="gpt-5.4-mini",
+            persona_prompt_language="",
+            persona_prompt_locale="ko",
+        )
+
+
+def test_empty_persona_output_language_raises_clear_error():
+    with pytest.raises(ValueError, match="Unsupported persona output language"):
+        OasisProfileGenerator(
+            api_key="test-key",
+            base_url="http://127.0.0.1:8787/v1",
+            model_name="gpt-5.4-mini",
+            persona_output_language="",
+        )

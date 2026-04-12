@@ -213,11 +213,20 @@ class OasisProfileGenerator:
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
         self.graph_id = graph_id
-        configured_prompt_language = persona_prompt_language or persona_prompt_locale or Config.LLM_PROMPT_LANGUAGE
+        if persona_prompt_language is not None:
+            configured_prompt_language = persona_prompt_language
+        elif persona_prompt_locale is not None:
+            configured_prompt_language = persona_prompt_locale
+        else:
+            configured_prompt_language = Config.LLM_PROMPT_LANGUAGE
+
         self.persona_prompt_language = self._normalize_persona_prompt_language(configured_prompt_language)
         self.persona_prompt_locale = self.persona_prompt_language
+        configured_output_language = (
+            persona_output_language if persona_output_language is not None else Config.LLM_OUTPUT_LANGUAGE
+        )
         self.persona_output_language = self._normalize_persona_output_language(
-            persona_output_language or Config.LLM_OUTPUT_LANGUAGE
+            configured_output_language
         )
         
         if self.zep_api_key:
@@ -227,14 +236,14 @@ class OasisProfileGenerator:
                 logger.warning(f"Zep 클라이언트 초기화 실패: {e}")
 
     def _normalize_persona_prompt_language(self, value: Optional[str]) -> str:
-        language = (value or "legacy").strip().lower()
+        language = "legacy" if value is None else value.strip().lower()
         if language not in self.SUPPORTED_PERSONA_PROMPT_LANGUAGES:
             supported = ", ".join(sorted(self.SUPPORTED_PERSONA_PROMPT_LANGUAGES))
             raise ValueError(f"Unsupported persona prompt language: {value}. Supported values: {supported}")
         return language
 
     def _normalize_persona_output_language(self, value: Optional[str]) -> str:
-        language = (value or "ko").strip().lower()
+        language = "ko" if value is None else value.strip().lower()
         if language not in self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES:
             supported = ", ".join(sorted(self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES))
             raise ValueError(f"Unsupported persona output language: {value}. Supported values: {supported}")
