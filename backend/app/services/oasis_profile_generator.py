@@ -189,7 +189,8 @@ class OasisProfileGenerator:
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
         zep_api_key: Optional[str] = None,
-        graph_id: Optional[str] = None
+        graph_id: Optional[str] = None,
+        persona_prompt_locale: str = "legacy"
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -207,12 +208,19 @@ class OasisProfileGenerator:
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
         self.graph_id = graph_id
+        self.persona_prompt_locale = persona_prompt_locale
         
         if self.zep_api_key:
             try:
                 self.zep_client = Zep(api_key=self.zep_api_key)
             except Exception as e:
                 logger.warning(f"Zep 클라이언트 초기화 실패: {e}")
+
+    def _empty_prompt_value(self) -> str:
+        return "없음" if getattr(self, "persona_prompt_locale", "legacy") == "ko" else "无"
+
+    def _empty_context_value(self) -> str:
+        return "추가 컨텍스트 없음" if getattr(self, "persona_prompt_locale", "legacy") == "ko" else "无额外上下文"
     
     def generate_profile_from_entity(
         self, 
@@ -713,8 +721,8 @@ class OasisProfileGenerator:
     ) -> str:
         """개인 엔터티용 상세 페르소나 프롬프트를 구성한다."""
         
-        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
-        context_str = context[:3000] if context else "无额外上下文"
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
         
         return f"""아래 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 사용자 페르소나를 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
 
@@ -761,8 +769,8 @@ class OasisProfileGenerator:
     ) -> str:
         """집단/기관 엔터티용 상세 페르소나 프롬프트를 구성한다."""
         
-        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
-        context_str = context[:3000] if context else "无额外上下文"
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
         
         return f"""아래 기관/집단 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 공식 계정 설정을 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
 

@@ -101,3 +101,41 @@ def test_generated_profile_console_labels_are_korean(capsys):
     assert "상세 페르소나" in output
     assert "年龄" not in output
     assert "用户名" not in output
+
+
+def test_persona_prompt_locale_keeps_legacy_placeholders_by_default():
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator.persona_prompt_locale = "legacy"
+
+    prompt = generator._build_individual_persona_prompt(
+        entity_name="테스터",
+        entity_type="개인",
+        entity_summary="",
+        entity_attributes={},
+        context="",
+    )
+
+    assert "엔터티 속성: 无" in prompt
+    assert "문맥 정보:\n无额外上下文" in prompt
+    for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
+        assert field_name in prompt
+
+
+def test_persona_prompt_locale_ko_uses_korean_placeholders_without_renaming_json_fields():
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator.persona_prompt_locale = "ko"
+
+    prompt = generator._build_group_persona_prompt(
+        entity_name="테스트 기관",
+        entity_type="조직",
+        entity_summary="",
+        entity_attributes={},
+        context="",
+    )
+
+    assert "엔터티 속성: 없음" in prompt
+    assert "문맥 정보:\n추가 컨텍스트 없음" in prompt
+    assert "无" not in prompt
+    assert "无额外上下文" not in prompt
+    for field_name in ["bio", "persona", "age", "gender", "mbti", "country", "profession", "interested_topics"]:
+        assert field_name in prompt
