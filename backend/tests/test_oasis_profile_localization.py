@@ -414,3 +414,24 @@ def test_generate_profile_partial_json_repair_uses_english_final_fallbacks():
     assert profile.country in generator.EN_COUNTRIES
     assert profile.profession == "Individual account"
     assert profile.interested_topics == ["General issues", "Social trends"]
+
+
+def test_partial_json_repair_uses_context_for_english_country_inference():
+    generator = _make_language_generator("en")
+    generator.graph_id = None
+    generator.zep_client = None
+    generator.EN_COUNTRIES = ["Taiwan"]
+    generator.client = _FakeOpenAIClient('prefix {"bio": "English bio only"} suffix')
+    generator.model_name = "fake-model"
+
+    entity = EntityNode(
+        uuid="entity-1",
+        name="Context Country Target",
+        labels=["person"],
+        summary="",
+        attributes={"location": "Seoul"},
+    )
+
+    profile = generator.generate_profile_from_entity(entity, user_id=1, use_llm=True)
+
+    assert profile.country == "South Korea"

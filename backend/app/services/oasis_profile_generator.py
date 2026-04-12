@@ -709,7 +709,9 @@ class OasisProfileGenerator:
                     logger.warning(f"JSON 파싱 실패 (attempt {attempt+1}): {str(je)[:80]}")
                     
                     # JSON 복구 시도
-                    result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
+                    result = self._try_fix_json(
+                        content, entity_name, entity_type, entity_summary, context
+                    )
                     if result.get("_fixed"):
                         del result["_fixed"]
                         return self._complete_profile_defaults(
@@ -752,7 +754,14 @@ class OasisProfileGenerator:
         
         return content
     
-    def _try_fix_json(self, content: str, entity_name: str, entity_type: str, entity_summary: str = "") -> Dict[str, Any]:
+    def _try_fix_json(
+        self,
+        content: str,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str = "",
+        context: str = "",
+    ) -> Dict[str, Any]:
         """손상된 JSON 복구를 시도한다."""
         import re
         
@@ -781,7 +790,7 @@ class OasisProfileGenerator:
             try:
                 result = json.loads(json_str)
                 result = self._complete_profile_defaults(
-                    result, entity_name, entity_type, entity_summary
+                    result, entity_name, entity_type, entity_summary, context
                 )
                 result["_fixed"] = True
                 return result
@@ -794,7 +803,7 @@ class OasisProfileGenerator:
                     json_str = re.sub(r'\s+', ' ', json_str)
                     result = json.loads(json_str)
                     result = self._complete_profile_defaults(
-                        result, entity_name, entity_type, entity_summary
+                        result, entity_name, entity_type, entity_summary, context
                     )
                     result["_fixed"] = True
                     return result
@@ -817,13 +826,13 @@ class OasisProfileGenerator:
                 "_fixed": True,
             }
             return self._complete_profile_defaults(
-                result, entity_name, entity_type, entity_summary
+                result, entity_name, entity_type, entity_summary, context
             )
         
         # 7. 완전히 실패하면 기본 구조를 반환한다.
         logger.warning("JSON 복구 실패. 기본 구조를 반환합니다.")
         return self._complete_profile_defaults(
-            {}, entity_name, entity_type, entity_summary
+            {}, entity_name, entity_type, entity_summary, context
         )
     
     def _output_language_name(self) -> str:
