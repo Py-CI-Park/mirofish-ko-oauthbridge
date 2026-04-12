@@ -1,7 +1,7 @@
 ﻿# LLM 언어 옵션 1차 설계
 
-작성일: 2026-04-12  
-대상 브랜치: `fix/persona-prompt-korean-eval`  
+작성일: 2026-04-12
+대상 브랜치: `fix/persona-prompt-korean-eval`
 상태: 설계 승인 후 구현 계획 작성 전
 
 ## 1. 목적

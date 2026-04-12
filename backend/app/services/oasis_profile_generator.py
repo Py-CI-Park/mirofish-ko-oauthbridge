@@ -183,6 +183,19 @@ class OasisProfileGenerator:
         "대한민국": ["south korea", "korea", "seoul", "대한민국", "한국"],
     }
 
+    EN_COUNTRIES = [
+        "Taiwan", "China", "Japan", "United States", "United Kingdom",
+        "Germany", "France", "Canada", "Australia", "India", "South Korea"
+    ]
+
+    EN_COUNTRY_KEYWORDS = {
+        "Taiwan": ["taiwan", "taipei", "adiz", "taiwanese", "roc", "대만", "타이완"],
+        "China": ["china", "prc", "pla", "beijing", "중국", "중화", "인민해방군"],
+        "Japan": ["japan", "tokyo", "일본"],
+        "United States": ["united states", "u.s.", "us ", "washington", "indo-pacific", "미국"],
+        "South Korea": ["south korea", "korea", "seoul", "대한민국", "한국"],
+    }
+
     SUPPORTED_PERSONA_PROMPT_LANGUAGES = {"legacy", "ko", "en", "zh"}
     SUPPORTED_PERSONA_OUTPUT_LANGUAGES = {"ko", "en"}
     
@@ -254,6 +267,44 @@ class OasisProfileGenerator:
 
     def _output_language(self) -> str:
         return getattr(self, "persona_output_language", "ko")
+
+    def _is_english_output(self) -> bool:
+        return self._output_language() == "en"
+
+    def _english_article(self, value: str) -> str:
+        first = (value or "entity").strip()[:1].lower()
+        return "an" if first in {"a", "e", "i", "o", "u"} else "a"
+
+    def _default_bio(self, entity_name: str, entity_type: str, entity_summary: str = "") -> str:
+        if self._is_english_output():
+            entity_kind = (entity_type or "entity").strip() or "entity"
+            return f"{entity_kind}: {entity_name}"
+        return entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
+
+    def _default_persona(self, entity_name: str, entity_type: str, entity_summary: str = "") -> str:
+        if self._is_english_output():
+            entity_kind = (entity_type or "entity").strip().lower() or "entity"
+            article = self._english_article(entity_kind)
+            return (
+                f"{entity_name} is {article} {entity_kind} profile that participates "
+                "in online discussion based on available context."
+            )
+        return entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다."
+
+    def _default_interested_topics(self, entity_type: str = "") -> List[str]:
+        if not self._is_english_output():
+            return []
+
+        entity_type_lower = self._normalize_entity_type_key(entity_type)
+        if entity_type_lower in ["student", "alumni", "학생", "동문"]:
+            return ["Education", "Social issues", "Technology"]
+        if entity_type_lower in ["publicfigure", "expert", "faculty", "공인", "전문가", "교직원"]:
+            return ["Politics", "Economy", "Social culture"]
+        if entity_type_lower in ["mediaoutlet", "socialmediaplatform", "언론사", "플랫폼"]:
+            return ["General news", "Current affairs", "Public issues"]
+        if entity_type_lower in ["university", "governmentagency", "ngo", "organization", "대학", "정부기관", "시민단체", "조직"]:
+            return ["Public policy", "Community", "Official notices"]
+        return ["General issues", "Social trends"]
 
     def _empty_prompt_value(self) -> str:
         language = self._prompt_language()
@@ -621,14 +672,16 @@ class OasisProfileGenerator:
                     
                     # 필수 필드 검증
                     if "bio" not in result or not result["bio"]:
-                        result["bio"] = entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
+                        result["bio"] = self._default_bio(entity_name, entity_type, entity_summary)
                     if "persona" not in result or not result["persona"]:
-                        result["persona"] = entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다."
+                        result["persona"] = self._default_persona(entity_name, entity_type, entity_summary)
                     if "country" not in result or not result["country"]:
                         result["country"] = self._infer_country_label(entity_name, entity_type, entity_summary, context)
                     if "profession" not in result or not result["profession"]:
                         result["profession"] = self._infer_profession_label(entity_type)
                     result["interested_topics"] = self._normalize_topics(result.get("interested_topics", []))
+                    if not result["interested_topics"]:
+                        result["interested_topics"] = self._default_interested_topics(entity_type)
                     
                     return result
                     
@@ -724,8 +777,8 @@ class OasisProfileGenerator:
         bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
         persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 잘렸을 수 있음
         
-        bio = bio_match.group(1) if bio_match else (entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}")
-        persona = persona_match.group(1) if persona_match else (entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다.")
+        bio = bio_match.group(1) if bio_match else self._default_bio(entity_name, entity_type, entity_summary)
+        persona = persona_match.group(1) if persona_match else self._default_persona(entity_name, entity_type, entity_summary)
         
         # 의미 있는 내용을 추출했다면 복구된 것으로 표시한다.
         if bio_match or persona_match:
@@ -735,18 +788,18 @@ class OasisProfileGenerator:
                 "persona": persona,
                 "country": self._infer_country_label(entity_name, entity_type, entity_summary),
                 "profession": self._infer_profession_label(entity_type),
-                "interested_topics": self._normalize_topics([]),
+                "interested_topics": self._default_interested_topics(entity_type),
                 "_fixed": True
             }
         
         # 7. 완전히 실패하면 기본 구조를 반환한다.
         logger.warning("JSON 복구 실패. 기본 구조를 반환합니다.")
         return {
-            "bio": entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}",
-            "persona": entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다.",
+            "bio": self._default_bio(entity_name, entity_type, entity_summary),
+            "persona": self._default_persona(entity_name, entity_type, entity_summary),
             "country": self._infer_country_label(entity_name, entity_type, entity_summary),
             "profession": self._infer_profession_label(entity_type),
-            "interested_topics": self._normalize_topics([]),
+            "interested_topics": self._default_interested_topics(entity_type),
         }
     
     def _output_language_name(self) -> str:
@@ -997,6 +1050,11 @@ Important:
         
         # 엔터티 유형에 따라 다른 페르소나를 생성한다.
         entity_type_lower = self._normalize_entity_type_key(entity_type)
+
+        if self._is_english_output():
+            return self._generate_profile_rule_based_en(
+                entity_name, entity_type, entity_summary, entity_attributes, entity_type_lower
+            )
         
         if entity_type_lower in ["student", "alumni", "학생", "동문"]:
             return {
@@ -1058,6 +1116,73 @@ Important:
                 "profession": self._infer_profession_label(entity_type),
                 "interested_topics": ["일반 이슈", "사회 현안"],
             }
+
+    def _generate_profile_rule_based_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        entity_type_lower: str,
+    ) -> Dict[str, Any]:
+        if entity_type_lower in ["student", "alumni", "학생", "동문"]:
+            return {
+                "bio": f"{entity_name} is a student-oriented account that follows education, social issues, and technology.",
+                "persona": f"{entity_name} has a student background and connects social issues with education and personal experience. Online, the persona balances peer-level concerns, fact checking, and emotional expression.",
+                "age": random.randint(18, 30),
+                "gender": random.choice(["male", "female"]),
+                "mbti": random.choice(self.MBTI_TYPES),
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": "Student or young community member",
+                "interested_topics": ["Education", "Social issues", "Technology"],
+            }
+
+        if entity_type_lower in ["publicfigure", "expert", "faculty", "공인", "전문가", "교직원"]:
+            return {
+                "bio": f"{entity_name} is a public-facing account that interprets public issues through expertise and commentary.",
+                "persona": f"{entity_name} speaks with an expert-oriented persona. The account favors structured analysis, institutional context, and clear communication over simple emotional reaction.",
+                "age": random.randint(35, 60),
+                "gender": random.choice(["male", "female"]),
+                "mbti": random.choice(["ENTJ", "INTJ", "ENTP", "INTP"]),
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": entity_attributes.get("occupation", "Expert or public commentator"),
+                "interested_topics": ["Politics", "Economy", "Social culture"],
+            }
+
+        if entity_type_lower in ["mediaoutlet", "socialmediaplatform", "언론사", "플랫폼"]:
+            return {
+                "bio": f"{entity_name} is a media-oriented account that shares news, updates, and public discussion cues.",
+                "persona": f"{entity_name} acts as an information channel for news and issue commentary. The account values fast updates, clear framing, and awareness of audience reaction.",
+                "age": 30,
+                "gender": "other",
+                "mbti": "ISTJ",
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": "Media or platform operations account",
+                "interested_topics": ["General news", "Current affairs", "Public issues"],
+            }
+
+        if entity_type_lower in ["university", "governmentagency", "ngo", "organization", "대학", "정부기관", "시민단체", "조직"]:
+            return {
+                "bio": f"{entity_name} is an institutional account that communicates official positions, notices, and stakeholder updates.",
+                "persona": f"{entity_name} represents an organization with an official and accountable voice. The account focuses on factual clarification, position statements, and continuity of public trust.",
+                "age": 30,
+                "gender": "other",
+                "mbti": "ISTJ",
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": self._infer_profession_label(entity_type),
+                "interested_topics": ["Public policy", "Community", "Official notices"],
+            }
+
+        return {
+            "bio": self._default_bio(entity_name, entity_type, entity_summary),
+            "persona": self._default_persona(entity_name, entity_type, entity_summary),
+            "age": random.randint(25, 50),
+            "gender": random.choice(["male", "female"]),
+            "mbti": random.choice(self.MBTI_TYPES),
+            "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+            "profession": self._infer_profession_label(entity_type),
+            "interested_topics": ["General issues", "Social trends"],
+        }
     
     def set_graph_id(self, graph_id: str):
         """Zep 검색에 사용할 graph ID를 설정한다."""
@@ -1071,6 +1196,12 @@ Important:
         context: str = ""
     ) -> str:
         haystack = f"{entity_name}\n{entity_type}\n{entity_summary}\n{context}".lower()
+        if self._is_english_output():
+            for country, keywords in self.EN_COUNTRY_KEYWORDS.items():
+                if any(keyword in haystack for keyword in keywords):
+                    return country
+            return random.choice(self.EN_COUNTRIES)
+
         for country, keywords in self.COUNTRY_KEYWORDS.items():
             if any(keyword in haystack for keyword in keywords):
                 return country
@@ -1078,6 +1209,47 @@ Important:
 
     def _infer_profession_label(self, entity_type: str) -> str:
         normalized = (entity_type or "Entity").strip()
+        if self._is_english_output():
+            english_mapping = {
+                "governmentagency": "Government or public agency account",
+                "organization": "Organization or institution account",
+                "ngo": "Civic or nonprofit organization account",
+                "mediaoutlet": "News or media account",
+                "company": "Company or brand account",
+                "university": "University or education institution account",
+                "community": "Community operations account",
+                "socialmediaplatform": "Platform operations account",
+                "student": "Student or young community member",
+                "alumni": "Alumni or community member",
+                "professor": "Professor or academic account",
+                "person": "Individual account",
+                "publicfigure": "Public figure account",
+                "expert": "Expert or public commentator",
+                "faculty": "Faculty or education professional",
+                "official": "Public official account",
+                "journalist": "Journalist or media commentator",
+                "activist": "Activist or civic participant",
+                "학생": "Student or young community member",
+                "동문": "Alumni or community member",
+                "교수": "Professor or academic account",
+                "개인": "Individual account",
+                "공인": "Public figure account",
+                "전문가": "Expert or public commentator",
+                "교직원": "Faculty or education professional",
+                "공무원": "Public official account",
+                "기자": "Journalist or media commentator",
+                "활동가": "Activist or civic participant",
+                "정부기관": "Government or public agency account",
+                "조직": "Organization or institution account",
+                "시민단체": "Civic or nonprofit organization account",
+                "언론사": "News or media account",
+                "기업": "Company or brand account",
+                "대학": "University or education institution account",
+                "커뮤니티": "Community operations account",
+                "플랫폼": "Platform operations account",
+            }
+            return english_mapping.get(self._normalize_entity_type_key(normalized), normalized)
+
         mapping = {
             "governmentagency": "정부·공공기관 계정",
             "organization": "조직·기관 계정",

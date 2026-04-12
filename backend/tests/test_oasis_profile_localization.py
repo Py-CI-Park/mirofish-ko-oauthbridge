@@ -29,6 +29,14 @@ def _make_generator():
     return generator
 
 
+def _make_language_generator(output_language="ko"):
+    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator.persona_prompt_language = "en"
+    generator.persona_prompt_locale = "en"
+    generator.persona_output_language = output_language
+    return generator
+
+
 def test_zep_search_query_uses_korean_source_text():
     generator = _make_generator()
     entity = EntityNode(
@@ -289,3 +297,89 @@ def test_empty_persona_output_language_raises_clear_error():
             model_name="gpt-5.4-mini",
             persona_output_language="",
         )
+
+
+def test_rule_based_fallback_uses_english_defaults_when_output_language_is_en():
+    generator = _make_language_generator("en")
+
+    profile = generator._generate_profile_rule_based(
+        entity_name="Test Student",
+        entity_type="student",
+        entity_summary="",
+        entity_attributes={},
+    )
+
+    assert "student background" in profile["persona"]
+    assert profile["country"] in generator.EN_COUNTRIES
+    assert profile["profession"] == "Student or young community member"
+    assert profile["interested_topics"] == ["Education", "Social issues", "Technology"]
+    assert profile["gender"] in {"male", "female", "other"}
+
+    korean_type_profile = generator._generate_profile_rule_based(
+        entity_name="Korean Type Student",
+        entity_type="학생",
+        entity_summary="",
+        entity_attributes={},
+    )
+    assert "student background" in korean_type_profile["persona"]
+    assert korean_type_profile["profession"] == "Student or young community member"
+    assert korean_type_profile["interested_topics"] == ["Education", "Social issues", "Technology"]
+
+
+def test_try_fix_json_full_fallback_uses_english_defaults_when_output_language_is_en():
+    generator = _make_language_generator("en")
+
+    profile = generator._try_fix_json(
+        content="not json at all",
+        entity_name="Civic Group",
+        entity_type="organization",
+        entity_summary="",
+    )
+
+    assert profile["persona"] == "Civic Group is an organization profile that participates in online discussion based on available context."
+    assert profile["country"] in generator.EN_COUNTRIES
+    assert profile["profession"] == "Organization or institution account"
+    assert profile["interested_topics"] == ["Public policy", "Community", "Official notices"]
+
+
+class _FakeCompletionResponse:
+    choices = [
+        SimpleNamespace(
+            finish_reason="stop",
+            message=SimpleNamespace(content='{"bio": "Short English bio", "age": 42, "gender": "other", "mbti": "INTJ"}'),
+        )
+    ]
+
+
+class _FakeCompletions:
+    def create(self, **kwargs):
+        return _FakeCompletionResponse()
+
+
+class _FakeChat:
+    completions = _FakeCompletions()
+
+
+class _FakeOpenAIClient:
+    chat = _FakeChat()
+
+
+def test_llm_missing_fields_use_english_defaults_without_real_llm_call():
+    generator = _make_language_generator("en")
+    generator.client = _FakeOpenAIClient()
+    generator.model_name = "fake-model"
+
+    profile = generator._generate_profile_with_llm(
+        entity_name="Missing Fields",
+        entity_type="person",
+        entity_summary="",
+        entity_attributes={},
+        context="",
+    )
+
+    assert profile["bio"] == "Short English bio"
+    assert profile["persona"] == "Missing Fields is a person profile that participates in online discussion based on available context."
+    assert profile["country"] in generator.EN_COUNTRIES
+    assert profile["profession"] == "Individual account"
+    assert profile["interested_topics"] == ["General issues", "Social trends"]
+    assert profile["gender"] == "other"
