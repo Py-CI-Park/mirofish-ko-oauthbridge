@@ -749,16 +749,38 @@ class OasisProfileGenerator:
             "interested_topics": self._normalize_topics([]),
         }
     
+    def _output_language_name(self) -> str:
+        return "English" if self._output_language() == "en" else "Korean"
+
+    def _output_language_instruction_ko(self) -> str:
+        if self._output_language() == "en":
+            return "bio, persona, profession, interested_topics, country 는 모두 영어로 작성하라."
+        return "bio, persona, profession, interested_topics, country 는 모두 한국어로 작성하라."
+
+    def _output_language_instruction_en(self) -> str:
+        if self._output_language() == "en":
+            return "Write string values in English."
+        return "Write string values in Korean."
+
     def _get_system_prompt(self, is_individual: bool) -> str:
         """시스템 프롬프트를 반환한다."""
-        base_prompt = (
+        if self._prompt_language() == "en":
+            output_language = self._output_language_name()
+            return (
+                "You are an expert social media simulation persona generator. "
+                "Create detailed, natural personas that preserve realistic context and article clues. "
+                "Return only a valid JSON object, and do not include unescaped line breaks in string values. "
+                f"bio, persona, profession, interested_topics, country must be written in {output_language}. "
+                "Do not use Chinese. Return the gender field only as one of male/female/other."
+            )
+
+        return (
             "너는 소셜 미디어 시뮬레이션용 사용자 페르소나 생성 전문가다. "
             "현실 맥락과 기사 단서를 최대한 살려 상세하고 자연스러운 페르소나를 작성하라. "
             "반드시 유효한 JSON 객체만 반환하고, 문자열 값에는 이스케이프되지 않은 줄바꿈을 넣지 마라. "
-            "bio, persona, profession, interested_topics, country 는 모두 한국어로 작성하라. "
+            f"{self._output_language_instruction_ko()} "
             "중국어를 사용하지 마라. gender 필드만 male/female/other 중 하나의 영문 값으로 반환하라."
         )
-        return base_prompt
     
     def _build_individual_persona_prompt(
         self,
@@ -769,11 +791,16 @@ class OasisProfileGenerator:
         context: str
     ) -> str:
         """개인 엔터티용 상세 페르소나 프롬프트를 구성한다."""
+        if self._prompt_language() == "en":
+            return self._build_individual_persona_prompt_en(
+                entity_name, entity_type, entity_summary, entity_attributes, context
+            )
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
         context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_ko()
         
-        return f"""아래 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 사용자 페르소나를 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
+        return f"""아래 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 사용자 페르소나를 생성하라. 가능한 한 현실 맥락을 살리고, 지정된 출력 언어를 엄격히 따르라.
 
 엔터티 이름: {entity_name}
 엔터티 유형: {entity_type}
@@ -785,8 +812,8 @@ class OasisProfileGenerator:
 
 아래 필드를 포함하는 JSON을 생성하세요:
 
-1. bio: 소셜 미디어 소개문, 한국어 2~3문장
-2. persona: 상세 페르소나 설명(한국어 순문단), 다음 내용을 포함:
+1. bio: 소셜 미디어 소개문, 지정된 출력 언어 2~3문장
+2. persona: 상세 페르소나 설명(지정된 출력 언어 순문단), 다음 내용을 포함:
    - 기본 정보(연령대, 직업, 교육/경력, 활동 지역)
    - 사건과의 연결 배경
    - 성격 특성(MBTI, 감정 표현 방식, 판단 습관)
@@ -796,16 +823,66 @@ class OasisProfileGenerator:
 3. age: 나이 숫자(정수)
 4. gender: 영문 값만 허용 - "male" 또는 "female"
 5. mbti: MBTI 유형
-6. country: 국가/지역명 (한국어, 예: "대만", "중국", "일본", "미국")
-7. profession: 직업/역할 (한국어)
-8. interested_topics: 관심 주제 배열 (한국어)
+6. country: 국가/지역명 (지정된 출력 언어)
+7. profession: 직업/역할 (지정된 출력 언어)
+8. interested_topics: 관심 주제 배열 (지정된 출력 언어)
 
 중요:
+- {output_instruction}
 - 모든 필드 값은 문자열 또는 숫자만 사용하고 null은 쓰지 마세요.
-- persona는 하나의 연속된 한국어 문단으로 작성하세요.
+- persona는 하나의 연속된 문단으로 작성하세요.
 - 중국어를 쓰지 마세요.
 - 내용은 엔티티 정보와 문맥에 맞아야 합니다.
 - age는 유효한 정수, gender는 "male" 또는 "female" 이어야 합니다.
+"""
+
+    def _build_individual_persona_prompt_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        context: str
+    ) -> str:
+        """Build a detailed persona prompt for individual entities in English."""
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_en()
+
+        return f"""Create a detailed social media user persona for the entity below. Preserve realistic context as much as possible and strictly follow the output language instruction.
+
+Entity name: {entity_name}
+Entity type: {entity_type}
+Entity summary: {entity_summary}
+Entity attributes: {attrs_str}
+
+Context information:
+{context_str}
+
+Generate JSON with these exact field names:
+
+1. bio: 2-3 sentence social media profile introduction
+2. persona: detailed persona description in one continuous paragraph, including:
+   - Basic information such as age range, profession, education or career, and active region
+   - Background connection to the event
+   - Personality traits such as MBTI, emotional expression, and judgment habits
+   - Social media behavior patterns such as posting frequency, preferred content, and interaction style
+   - Position on the topic and sensitive points
+   - Memories or experiences explaining why this entity reacts this way
+3. age: integer age
+4. gender: English value only - "male" or "female"
+5. mbti: MBTI type
+6. country: country or region name
+7. profession: profession or role
+8. interested_topics: array of interested topics
+
+Important:
+- {output_instruction}
+- Use only strings or numbers for field values and do not use null.
+- Write persona as one continuous paragraph.
+- Do not use Chinese.
+- Content must match the entity information and context.
+- age must be a valid integer, and gender must be "male" or "female".
 """
 
     def _build_group_persona_prompt(
@@ -817,11 +894,16 @@ class OasisProfileGenerator:
         context: str
     ) -> str:
         """집단/기관 엔터티용 상세 페르소나 프롬프트를 구성한다."""
+        if self._prompt_language() == "en":
+            return self._build_group_persona_prompt_en(
+                entity_name, entity_type, entity_summary, entity_attributes, context
+            )
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
         context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_ko()
         
-        return f"""아래 기관/집단 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 공식 계정 설정을 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
+        return f"""아래 기관/집단 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 공식 계정 설정을 생성하라. 가능한 한 현실 맥락을 살리고, 지정된 출력 언어를 엄격히 따르라.
 
 엔터티 이름: {entity_name}
 엔터티 유형: {entity_type}
@@ -833,8 +915,8 @@ class OasisProfileGenerator:
 
 아래 필드를 포함하는 JSON을 생성하세요:
 
-1. bio: 공식 계정 소개문, 한국어 2~3문장
-2. persona: 상세 계정/기관 설정 설명(한국어 순문단), 다음 내용을 포함:
+1. bio: 공식 계정 소개문, 지정된 출력 언어 2~3문장
+2. persona: 상세 계정/기관 설정 설명(지정된 출력 언어 순문단), 다음 내용을 포함:
    - 기관 기본 정보(성격, 배경, 기능)
    - 계정 포지션과 목표 독자
    - 발화 스타일과 금기 표현
@@ -844,16 +926,65 @@ class OasisProfileGenerator:
 3. age: 고정값 30
 4. gender: 고정값 "other"
 5. mbti: 계정 스타일을 설명하는 MBTI
-6. country: 국가/지역명 (한국어, 예: "대만", "중국", "일본", "미국")
-7. profession: 기관/조직 역할 설명 (한국어)
-8. interested_topics: 주요 관심 주제 배열 (한국어)
+6. country: 국가/지역명 (지정된 출력 언어)
+7. profession: 기관/조직 역할 설명 (지정된 출력 언어)
+8. interested_topics: 주요 관심 주제 배열 (지정된 출력 언어)
 
 중요:
+- {output_instruction}
 - 모든 필드 값은 문자열 또는 숫자만 사용하고 null은 쓰지 마세요.
-- persona는 하나의 연속된 한국어 문단으로 작성하세요.
+- persona는 하나의 연속된 문단으로 작성하세요.
 - 중국어를 쓰지 마세요.
 - age는 30, gender는 "other" 로 고정하세요.
 - 기관 계정의 발화 스타일은 해당 조직의 역할과 위상에 맞아야 합니다."""
+
+    def _build_group_persona_prompt_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        context: str
+    ) -> str:
+        """Build a detailed official account prompt for group entities in English."""
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_en()
+
+        return f"""Create a detailed official account profile for the organization or group entity below. Preserve realistic context as much as possible and strictly follow the output language instruction.
+
+Entity name: {entity_name}
+Entity type: {entity_type}
+Entity summary: {entity_summary}
+Entity attributes: {attrs_str}
+
+Context information:
+{context_str}
+
+Generate JSON with these exact field names:
+
+1. bio: 2-3 sentence official account introduction
+2. persona: detailed account or organization profile in one continuous paragraph, including:
+   - Basic organization information such as nature, background, and function
+   - Account position and target audience
+   - Speaking style and prohibited expressions
+   - Posting pattern and active hours
+   - Position on key issues and response style
+   - Prior reactions and memories related to this event
+3. age: fixed value 30
+4. gender: fixed value "other"
+5. mbti: MBTI type describing the account style
+6. country: country or region name
+7. profession: organization or institution role description
+8. interested_topics: array of main interested topics
+
+Important:
+- {output_instruction}
+- Use only strings or numbers for field values and do not use null.
+- Write persona as one continuous paragraph.
+- Do not use Chinese.
+- age must be 30, and gender must be "other".
+- The account speaking style must fit the organization's role and status."""
     
     def _generate_profile_rule_based(
         self,
