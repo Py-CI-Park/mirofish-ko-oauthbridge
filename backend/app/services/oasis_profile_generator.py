@@ -182,6 +182,22 @@ class OasisProfileGenerator:
         "미국": ["united states", "u.s.", "us ", "washington", "indo-pacific", "미국"],
         "대한민국": ["south korea", "korea", "seoul", "대한민국", "한국"],
     }
+
+    EN_COUNTRIES = [
+        "Taiwan", "China", "Japan", "United States", "United Kingdom",
+        "Germany", "France", "Canada", "Australia", "India", "South Korea"
+    ]
+
+    EN_COUNTRY_KEYWORDS = {
+        "Taiwan": ["taiwan", "taipei", "adiz", "taiwanese", "roc", "대만", "타이완"],
+        "China": ["china", "prc", "pla", "beijing", "중국", "중화", "인민해방군"],
+        "Japan": ["japan", "tokyo", "일본"],
+        "United States": ["united states", "u.s.", "us ", "washington", "indo-pacific", "미국"],
+        "South Korea": ["south korea", "korea", "seoul", "대한민국", "한국"],
+    }
+
+    SUPPORTED_PERSONA_PROMPT_LANGUAGES = {"legacy", "ko", "en", "zh"}
+    SUPPORTED_PERSONA_OUTPUT_LANGUAGES = {"ko", "en"}
     
     def __init__(
         self, 
@@ -189,7 +205,10 @@ class OasisProfileGenerator:
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
         zep_api_key: Optional[str] = None,
-        graph_id: Optional[str] = None
+        graph_id: Optional[str] = None,
+        persona_prompt_locale: Optional[str] = None,
+        persona_prompt_language: Optional[str] = None,
+        persona_output_language: Optional[str] = None,
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -207,12 +226,126 @@ class OasisProfileGenerator:
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
         self.zep_client = None
         self.graph_id = graph_id
+        if persona_prompt_language is not None:
+            configured_prompt_language = persona_prompt_language
+        elif persona_prompt_locale is not None:
+            configured_prompt_language = persona_prompt_locale
+        else:
+            configured_prompt_language = Config.LLM_PROMPT_LANGUAGE
+
+        self.persona_prompt_language = self._normalize_persona_prompt_language(configured_prompt_language)
+        self.persona_prompt_locale = self.persona_prompt_language
+        configured_output_language = (
+            persona_output_language if persona_output_language is not None else Config.LLM_OUTPUT_LANGUAGE
+        )
+        self.persona_output_language = self._normalize_persona_output_language(
+            configured_output_language
+        )
         
         if self.zep_api_key:
             try:
                 self.zep_client = Zep(api_key=self.zep_api_key)
             except Exception as e:
                 logger.warning(f"Zep 클라이언트 초기화 실패: {e}")
+
+    def _normalize_persona_prompt_language(self, value: Optional[str]) -> str:
+        language = "legacy" if value is None else value.strip().lower()
+        if language not in self.SUPPORTED_PERSONA_PROMPT_LANGUAGES:
+            supported = ", ".join(sorted(self.SUPPORTED_PERSONA_PROMPT_LANGUAGES))
+            raise ValueError(f"Unsupported persona prompt language: {value}. Supported values: {supported}")
+        return language
+
+    def _normalize_persona_output_language(self, value: Optional[str]) -> str:
+        language = "ko" if value is None else value.strip().lower()
+        if language not in self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES:
+            supported = ", ".join(sorted(self.SUPPORTED_PERSONA_OUTPUT_LANGUAGES))
+            raise ValueError(f"Unsupported persona output language: {value}. Supported values: {supported}")
+        return language
+
+    def _prompt_language(self) -> str:
+        return getattr(self, "persona_prompt_language", getattr(self, "persona_prompt_locale", "legacy"))
+
+    def _output_language(self) -> str:
+        return getattr(self, "persona_output_language", "ko")
+
+    def _is_english_output(self) -> bool:
+        return self._output_language() == "en"
+
+    def _english_article(self, value: str) -> str:
+        first = (value or "entity").strip()[:1].lower()
+        return "an" if first in {"a", "e", "i", "o", "u"} else "a"
+
+    def _default_bio(self, entity_name: str, entity_type: str, entity_summary: str = "") -> str:
+        if self._is_english_output():
+            entity_kind = (entity_type or "entity").strip() or "entity"
+            return f"{entity_kind}: {entity_name}"
+        return entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
+
+    def _default_persona(self, entity_name: str, entity_type: str, entity_summary: str = "") -> str:
+        if self._is_english_output():
+            entity_kind = (entity_type or "entity").strip().lower() or "entity"
+            article = self._english_article(entity_kind)
+            return (
+                f"{entity_name} is {article} {entity_kind} profile that participates "
+                "in online discussion based on available context."
+            )
+        return entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다."
+
+    def _default_interested_topics(self, entity_type: str = "") -> List[str]:
+        if not self._is_english_output():
+            return []
+
+        entity_type_lower = self._normalize_entity_type_key(entity_type)
+        if entity_type_lower in ["student", "alumni", "학생", "동문"]:
+            return ["Education", "Social issues", "Technology"]
+        if entity_type_lower in ["publicfigure", "expert", "faculty", "공인", "전문가", "교직원"]:
+            return ["Politics", "Economy", "Social culture"]
+        if entity_type_lower in ["mediaoutlet", "socialmediaplatform", "언론사", "플랫폼"]:
+            return ["General news", "Current affairs", "Public issues"]
+        if entity_type_lower in ["university", "governmentagency", "ngo", "organization", "대학", "정부기관", "시민단체", "조직"]:
+            return ["Public policy", "Community", "Official notices"]
+        return ["General issues", "Social trends"]
+
+    def _complete_profile_defaults(
+        self,
+        profile_data: Dict[str, Any],
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str = "",
+        context: str = "",
+    ) -> Dict[str, Any]:
+        if not profile_data.get("bio"):
+            profile_data["bio"] = self._default_bio(entity_name, entity_type, entity_summary)
+        if not profile_data.get("persona"):
+            profile_data["persona"] = self._default_persona(entity_name, entity_type, entity_summary)
+        if not profile_data.get("country"):
+            profile_data["country"] = self._infer_country_label(entity_name, entity_type, entity_summary, context)
+        if not profile_data.get("profession"):
+            profile_data["profession"] = self._infer_profession_label(entity_type)
+
+        profile_data["interested_topics"] = self._normalize_topics(
+            profile_data.get("interested_topics", [])
+        )
+        if not profile_data["interested_topics"]:
+            profile_data["interested_topics"] = self._default_interested_topics(entity_type)
+
+        return profile_data
+
+    def _empty_prompt_value(self) -> str:
+        language = self._prompt_language()
+        if language == "ko":
+            return "없음"
+        if language == "en":
+            return "None"
+        return "无"
+
+    def _empty_context_value(self) -> str:
+        language = self._prompt_language()
+        if language == "ko":
+            return "추가 컨텍스트 없음"
+        if language == "en":
+            return "No additional context"
+        return "无额外上下文"
     
     def generate_profile_from_entity(
         self, 
@@ -257,13 +390,20 @@ class OasisProfileGenerator:
                 entity_summary=entity.summary,
                 entity_attributes=entity.attributes
             )
+        profile_data = self._complete_profile_defaults(
+            profile_data=profile_data,
+            entity_name=name,
+            entity_type=entity_type,
+            entity_summary=entity.summary,
+            context=context,
+        )
         
         return OasisAgentProfile(
             user_id=user_id,
             user_name=user_name,
             name=name,
-            bio=profile_data.get("bio", f"{entity_type}: {name}"),
-            persona=profile_data.get("persona", entity.summary or f"{name}는 {entity_type} 유형의 시뮬레이션 개체입니다."),
+            bio=profile_data["bio"],
+            persona=profile_data["persona"],
             karma=profile_data.get("karma", random.randint(500, 5000)),
             friend_count=profile_data.get("friend_count", random.randint(50, 500)),
             follower_count=profile_data.get("follower_count", random.randint(100, 1000)),
@@ -271,9 +411,9 @@ class OasisProfileGenerator:
             age=profile_data.get("age"),
             gender=profile_data.get("gender"),
             mbti=profile_data.get("mbti"),
-            country=profile_data.get("country") or self._infer_country_label(name, entity_type, entity.summary, context),
-            profession=profile_data.get("profession") or self._infer_profession_label(entity_type),
-            interested_topics=self._normalize_topics(profile_data.get("interested_topics", [])),
+            country=profile_data["country"],
+            profession=profile_data["profession"],
+            interested_topics=profile_data["interested_topics"],
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
@@ -319,7 +459,7 @@ class OasisProfileGenerator:
             logger.debug("graph_id가 없어 Zep 검색을 건너뜁니다")
             return results
         
-        comprehensive_query = f"关于{entity_name}的所有信息、活动、事件、关系和背景"
+        comprehensive_query = f"{entity_name}에 대한 모든 정보, 활동, 사건, 관계, 배경"
         
         def search_edges():
             """엣지(사실/관계) 검색 - 재시도 포함"""
@@ -434,13 +574,13 @@ class OasisProfileGenerator:
                 if value and str(value).strip():
                     attrs.append(f"- {key}: {value}")
             if attrs:
-                context_parts.append("### 实体属性\n" + "\n".join(attrs))
+                context_parts.append("### 엔티티 속성\n" + "\n".join(attrs))
         
         # 2. 관련 엣지 정보 추가 (사실/관계)
         existing_facts = set()
         if entity.related_edges:
             relationships = []
-            for edge in entity.related_edges:  # 不限制数量
+            for edge in entity.related_edges:  # 수량 제한 없음
                 fact = edge.get("fact", "")
                 edge_name = edge.get("edge_name", "")
                 direction = edge.get("direction", "")
@@ -450,17 +590,17 @@ class OasisProfileGenerator:
                     existing_facts.add(fact)
                 elif edge_name:
                     if direction == "outgoing":
-                        relationships.append(f"- {entity.name} --[{edge_name}]--> (相关实体)")
+                        relationships.append(f"- {entity.name} --[{edge_name}]--> (관련 엔티티)")
                     else:
-                        relationships.append(f"- (相关实体) --[{edge_name}]--> {entity.name}")
+                        relationships.append(f"- (관련 엔티티) --[{edge_name}]--> {entity.name}")
             
             if relationships:
-                context_parts.append("### 相关事实和关系\n" + "\n".join(relationships))
+                context_parts.append("### 관련 사실과 관계\n" + "\n".join(relationships))
         
         # 3. 연결 노드의 상세 정보 추가
         if entity.related_nodes:
             related_info = []
-            for node in entity.related_nodes:  # 不限制数量
+            for node in entity.related_nodes:  # 수량 제한 없음
                 node_name = node.get("name", "")
                 node_labels = node.get("labels", [])
                 node_summary = node.get("summary", "")
@@ -475,13 +615,13 @@ class OasisProfileGenerator:
                     related_info.append(f"- **{node_name}**{label_str}")
             
             if related_info:
-                context_parts.append("### 关联实体信息\n" + "\n".join(related_info))
+                context_parts.append("### 연관 엔티티 정보\n" + "\n".join(related_info))
         
         # 4. Zep 혼합 검색으로 더 풍부한 정보 획득
         zep_results = self._search_zep_for_entity(entity)
         
         if zep_results.get("facts"):
-            # 去重：排除已存在的事实
+            # 중복 제거: 이미 포함된 사실은 제외
             new_facts = [f for f in zep_results["facts"] if f not in existing_facts]
             if new_facts:
                 context_parts.append("### Zep 검색으로 얻은 사실 정보\n" + "\n".join(f"- {f}" for f in new_facts[:15]))
@@ -515,11 +655,11 @@ class OasisProfileGenerator:
         context: str
     ) -> Dict[str, Any]:
         """
-        使用LLM生成非常详细的人设
-        
-        根据实体类型区分：
-        - 个人实体：生成具体的人物设定
-        - 群体/机构实体：生成代表性账号设定
+        LLM을 사용해 매우 상세한 페르소나를 생성한다.
+
+        엔터티 유형별 생성 방식:
+        - 개인 엔터티: 구체적인 인물 설정 생성
+        - 집단/기관 엔터티: 대표 계정 설정 생성
         """
         
         is_individual = self._is_individual_entity(entity_type)
@@ -533,7 +673,7 @@ class OasisProfileGenerator:
                 entity_name, entity_type, entity_summary, entity_attributes, context
             )
 
-        # 尝试多次生成，直到成功或达到最大重试次数
+        # 성공하거나 최대 재시도 횟수에 도달할 때까지 여러 번 생성 시도
         max_attempts = 3
         last_error = None
         
@@ -546,162 +686,187 @@ class OasisProfileGenerator:
                         {"role": "user", "content": prompt}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 每次重试降低温度
-                    # 不设置max_tokens，让LLM自由发挥
+                    temperature=0.7 - (attempt * 0.1)  # 재시도할 때마다 temperature를 낮춤
+                    # max_tokens를 설정하지 않아 LLM 출력을 제한하지 않음
                 )
                 
                 content = response.choices[0].message.content
                 
-                # 检查是否被截断（finish_reason不是'stop'）
+                # 출력이 잘렸는지 확인(finish_reason이 'stop'이 아닌 경우)
                 finish_reason = response.choices[0].finish_reason
                 if finish_reason == 'length':
-                    logger.warning(f"LLM输出被截断 (attempt {attempt+1}), 尝试修复...")
+                    logger.warning(f"LLM 출력이 잘렸습니다 (attempt {attempt+1}). 복구를 시도합니다...")
                     content = self._fix_truncated_json(content)
                 
-                # 尝试解析JSON
+                # JSON 파싱 시도
                 try:
                     result = json.loads(content)
-                    
-                    # 验证必需字段
-                    if "bio" not in result or not result["bio"]:
-                        result["bio"] = entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
-                    if "persona" not in result or not result["persona"]:
-                        result["persona"] = entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다."
-                    if "country" not in result or not result["country"]:
-                        result["country"] = self._infer_country_label(entity_name, entity_type, entity_summary, context)
-                    if "profession" not in result or not result["profession"]:
-                        result["profession"] = self._infer_profession_label(entity_type)
-                    result["interested_topics"] = self._normalize_topics(result.get("interested_topics", []))
-                    
-                    return result
+                    return self._complete_profile_defaults(
+                        result, entity_name, entity_type, entity_summary, context
+                    )
                     
                 except json.JSONDecodeError as je:
-                    logger.warning(f"JSON解析失败 (attempt {attempt+1}): {str(je)[:80]}")
+                    logger.warning(f"JSON 파싱 실패 (attempt {attempt+1}): {str(je)[:80]}")
                     
-                    # 尝试修复JSON
-                    result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
+                    # JSON 복구 시도
+                    result = self._try_fix_json(
+                        content, entity_name, entity_type, entity_summary, context
+                    )
                     if result.get("_fixed"):
                         del result["_fixed"]
-                        return result
+                        return self._complete_profile_defaults(
+                            result, entity_name, entity_type, entity_summary, context
+                        )
                     
                     last_error = je
                     
             except Exception as e:
-                logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
+                logger.warning(f"LLM 호출 실패 (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
                 import time
-                time.sleep(1 * (attempt + 1))  # 指数退避
+                time.sleep(1 * (attempt + 1))  # 지수 백오프
         
-        logger.warning(f"LLM生成人设失败（{max_attempts}次尝试）: {last_error}, 使用规则生成")
+        logger.warning(f"LLM 페르소나 생성 실패({max_attempts}회 시도): {last_error}. 규칙 기반 생성을 사용합니다.")
         return self._generate_profile_rule_based(
             entity_name, entity_type, entity_summary, entity_attributes
         )
     
     def _fix_truncated_json(self, content: str) -> str:
-        """修复被截断的JSON（输出被max_tokens限制截断）"""
+        """잘린 JSON을 복구한다(max_tokens 제한 등으로 출력이 잘린 경우)."""
         import re
         
-        # 如果JSON被截断，尝试闭合它
+        # JSON이 잘렸다면 닫히지 않은 구조를 보완한다.
         content = content.strip()
         
-        # 计算未闭合的括号
+        # 닫히지 않은 괄호 수 계산
         open_braces = content.count('{') - content.count('}')
         open_brackets = content.count('[') - content.count(']')
         
-        # 检查是否有未闭合的字符串
-        # 简单检查：如果最后一个引号后没有逗号或闭合括号，可能是字符串被截断
+        # 닫히지 않은 문자열이 있는지 확인
+        # 단순 확인: 마지막 문자가 쉼표나 닫는 괄호가 아니면 문자열이 잘렸을 수 있다.
         if content and content[-1] not in '",}]':
-            # 尝试闭合字符串
+            # 문자열 닫기 시도
             content += '"'
         
-        # 闭合括号
+        # 괄호 닫기
         content += ']' * open_brackets
         content += '}' * open_braces
         
         return content
     
-    def _try_fix_json(self, content: str, entity_name: str, entity_type: str, entity_summary: str = "") -> Dict[str, Any]:
-        """尝试修复损坏的JSON"""
+    def _try_fix_json(
+        self,
+        content: str,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str = "",
+        context: str = "",
+    ) -> Dict[str, Any]:
+        """손상된 JSON 복구를 시도한다."""
         import re
         
-        # 1. 首先尝试修复被截断的情况
+        # 1. 먼저 잘린 JSON을 복구한다.
         content = self._fix_truncated_json(content)
         
-        # 2. 尝试提取JSON部分
+        # 2. JSON 부분 추출을 시도한다.
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             json_str = json_match.group()
             
-            # 3. 处理字符串中的换行符问题
-            # 找到所有字符串值并替换其中的换行符
+            # 3. 문자열 내부 줄바꿈 문제 처리
+            # 모든 문자열 값을 찾아 내부 줄바꿈을 치환한다.
             def fix_string_newlines(match):
                 s = match.group(0)
-                # 替换字符串内的实际换行符为空格
+                # 문자열 내부의 실제 줄바꿈을 공백으로 치환
                 s = s.replace('\n', ' ').replace('\r', ' ')
-                # 替换多余空格
+                # 중복 공백 치환
                 s = re.sub(r'\s+', ' ', s)
                 return s
             
-            # 匹配JSON字符串值
+            # JSON 문자열 값 매칭
             json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string_newlines, json_str)
             
-            # 4. 尝试解析
+            # 4. 파싱 시도
             try:
                 result = json.loads(json_str)
+                result = self._complete_profile_defaults(
+                    result, entity_name, entity_type, entity_summary, context
+                )
                 result["_fixed"] = True
                 return result
             except json.JSONDecodeError as e:
-                # 5. 如果还是失败，尝试更激进的修复
+                # 5. 계속 실패하면 더 적극적인 복구를 시도한다.
                 try:
-                    # 移除所有控制字符
+                    # 모든 제어 문자 제거
                     json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                    # 替换所有连续空白
+                    # 모든 연속 공백 치환
                     json_str = re.sub(r'\s+', ' ', json_str)
                     result = json.loads(json_str)
+                    result = self._complete_profile_defaults(
+                        result, entity_name, entity_type, entity_summary, context
+                    )
                     result["_fixed"] = True
                     return result
                 except:
                     pass
         
-        # 6. 尝试从内容中提取部分信息
+        # 6. 내용에서 일부 정보 추출 시도
         bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
-        persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 可能被截断
+        persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 잘렸을 수 있음
         
-        bio = bio_match.group(1) if bio_match else (entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}")
-        persona = persona_match.group(1) if persona_match else (entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다.")
+        bio = bio_match.group(1) if bio_match else self._default_bio(entity_name, entity_type, entity_summary)
+        persona = persona_match.group(1) if persona_match else self._default_persona(entity_name, entity_type, entity_summary)
         
-        # 如果提取到了有意义的内容，标记为已修复
+        # 의미 있는 내용을 추출했다면 복구된 것으로 표시한다.
         if bio_match or persona_match:
-            logger.info(f"从损坏的JSON中提取了部分信息")
-            return {
+            logger.info("손상된 JSON에서 일부 정보를 추출했습니다.")
+            result = {
                 "bio": bio,
                 "persona": persona,
-                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
-                "profession": self._infer_profession_label(entity_type),
-                "interested_topics": self._normalize_topics([]),
-                "_fixed": True
+                "_fixed": True,
             }
+            return self._complete_profile_defaults(
+                result, entity_name, entity_type, entity_summary, context
+            )
         
-        # 7. 完全失败，返回基础结构
-        logger.warning(f"JSON修复失败，返回基础结构")
-        return {
-            "bio": entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}",
-            "persona": entity_summary or f"{entity_name}는 {entity_type} 유형의 시뮬레이션 개체입니다.",
-            "country": self._infer_country_label(entity_name, entity_type, entity_summary),
-            "profession": self._infer_profession_label(entity_type),
-            "interested_topics": self._normalize_topics([]),
-        }
+        # 7. 완전히 실패하면 기본 구조를 반환한다.
+        logger.warning("JSON 복구 실패. 기본 구조를 반환합니다.")
+        return self._complete_profile_defaults(
+            {}, entity_name, entity_type, entity_summary, context
+        )
     
+    def _output_language_name(self) -> str:
+        return "English" if self._output_language() == "en" else "Korean"
+
+    def _output_language_instruction_ko(self) -> str:
+        if self._output_language() == "en":
+            return "bio, persona, profession, interested_topics, country 는 모두 영어로 작성하라."
+        return "bio, persona, profession, interested_topics, country 는 모두 한국어로 작성하라."
+
+    def _output_language_instruction_en(self) -> str:
+        if self._output_language() == "en":
+            return "Write string values in English."
+        return "Write string values in Korean."
+
     def _get_system_prompt(self, is_individual: bool) -> str:
-        """获取系统提示词"""
-        base_prompt = (
+        """시스템 프롬프트를 반환한다."""
+        if self._prompt_language() == "en":
+            output_language = self._output_language_name()
+            return (
+                "You are an expert social media simulation persona generator. "
+                "Create detailed, natural personas that preserve realistic context and article clues. "
+                "Return only a valid JSON object, and do not include unescaped line breaks in string values. "
+                f"bio, persona, profession, interested_topics, country must be written in {output_language}. "
+                "Do not use Chinese. Return the gender field only as one of male/female/other."
+            )
+
+        return (
             "너는 소셜 미디어 시뮬레이션용 사용자 페르소나 생성 전문가다. "
             "현실 맥락과 기사 단서를 최대한 살려 상세하고 자연스러운 페르소나를 작성하라. "
             "반드시 유효한 JSON 객체만 반환하고, 문자열 값에는 이스케이프되지 않은 줄바꿈을 넣지 마라. "
-            "bio, persona, profession, interested_topics, country 는 모두 한국어로 작성하라. "
+            f"{self._output_language_instruction_ko()} "
             "중국어를 사용하지 마라. gender 필드만 male/female/other 중 하나의 영문 값으로 반환하라."
         )
-        return base_prompt
     
     def _build_individual_persona_prompt(
         self,
@@ -711,12 +876,17 @@ class OasisProfileGenerator:
         entity_attributes: Dict[str, Any],
         context: str
     ) -> str:
-        """构建个人实体的详细人设提示词"""
+        """개인 엔터티용 상세 페르소나 프롬프트를 구성한다."""
+        if self._prompt_language() == "en":
+            return self._build_individual_persona_prompt_en(
+                entity_name, entity_type, entity_summary, entity_attributes, context
+            )
         
-        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
-        context_str = context[:3000] if context else "无额外上下文"
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_ko()
         
-        return f"""아래 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 사용자 페르소나를 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
+        return f"""아래 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 사용자 페르소나를 생성하라. 가능한 한 현실 맥락을 살리고, 지정된 출력 언어를 엄격히 따르라.
 
 엔터티 이름: {entity_name}
 엔터티 유형: {entity_type}
@@ -728,8 +898,8 @@ class OasisProfileGenerator:
 
 아래 필드를 포함하는 JSON을 생성하세요:
 
-1. bio: 소셜 미디어 소개문, 한국어 2~3문장
-2. persona: 상세 페르소나 설명(한국어 순문단), 다음 내용을 포함:
+1. bio: 소셜 미디어 소개문, 지정된 출력 언어 2~3문장
+2. persona: 상세 페르소나 설명(지정된 출력 언어 순문단), 다음 내용을 포함:
    - 기본 정보(연령대, 직업, 교육/경력, 활동 지역)
    - 사건과의 연결 배경
    - 성격 특성(MBTI, 감정 표현 방식, 판단 습관)
@@ -739,16 +909,66 @@ class OasisProfileGenerator:
 3. age: 나이 숫자(정수)
 4. gender: 영문 값만 허용 - "male" 또는 "female"
 5. mbti: MBTI 유형
-6. country: 국가/지역명 (한국어, 예: "대만", "중국", "일본", "미국")
-7. profession: 직업/역할 (한국어)
-8. interested_topics: 관심 주제 배열 (한국어)
+6. country: 국가/지역명 (지정된 출력 언어)
+7. profession: 직업/역할 (지정된 출력 언어)
+8. interested_topics: 관심 주제 배열 (지정된 출력 언어)
 
 중요:
+- {output_instruction}
 - 모든 필드 값은 문자열 또는 숫자만 사용하고 null은 쓰지 마세요.
-- persona는 하나의 연속된 한국어 문단으로 작성하세요.
+- persona는 하나의 연속된 문단으로 작성하세요.
 - 중국어를 쓰지 마세요.
 - 내용은 엔티티 정보와 문맥에 맞아야 합니다.
 - age는 유효한 정수, gender는 "male" 또는 "female" 이어야 합니다.
+"""
+
+    def _build_individual_persona_prompt_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        context: str
+    ) -> str:
+        """Build a detailed persona prompt for individual entities in English."""
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_en()
+
+        return f"""Create a detailed social media user persona for the entity below. Preserve realistic context as much as possible and strictly follow the output language instruction.
+
+Entity name: {entity_name}
+Entity type: {entity_type}
+Entity summary: {entity_summary}
+Entity attributes: {attrs_str}
+
+Context information:
+{context_str}
+
+Generate JSON with these exact field names:
+
+1. bio: 2-3 sentence social media profile introduction
+2. persona: detailed persona description in one continuous paragraph, including:
+   - Basic information such as age range, profession, education or career, and active region
+   - Background connection to the event
+   - Personality traits such as MBTI, emotional expression, and judgment habits
+   - Social media behavior patterns such as posting frequency, preferred content, and interaction style
+   - Position on the topic and sensitive points
+   - Memories or experiences explaining why this entity reacts this way
+3. age: integer age
+4. gender: English value only - "male" or "female"
+5. mbti: MBTI type
+6. country: country or region name
+7. profession: profession or role
+8. interested_topics: array of interested topics
+
+Important:
+- {output_instruction}
+- Use only strings or numbers for field values and do not use null.
+- Write persona as one continuous paragraph.
+- Do not use Chinese.
+- Content must match the entity information and context.
+- age must be a valid integer, and gender must be "male" or "female".
 """
 
     def _build_group_persona_prompt(
@@ -759,12 +979,17 @@ class OasisProfileGenerator:
         entity_attributes: Dict[str, Any],
         context: str
     ) -> str:
-        """构建群体/机构实体的详细人设提示词"""
+        """집단/기관 엔터티용 상세 페르소나 프롬프트를 구성한다."""
+        if self._prompt_language() == "en":
+            return self._build_group_persona_prompt_en(
+                entity_name, entity_type, entity_summary, entity_attributes, context
+            )
         
-        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
-        context_str = context[:3000] if context else "无额外上下文"
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_ko()
         
-        return f"""아래 기관/집단 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 공식 계정 설정을 생성하라. 가능한 한 현실 맥락을 살리고, 출력은 전부 한국어 중심으로 맞춰라.
+        return f"""아래 기관/집단 엔터티를 바탕으로 소셜 미디어 시뮬레이션용 상세 공식 계정 설정을 생성하라. 가능한 한 현실 맥락을 살리고, 지정된 출력 언어를 엄격히 따르라.
 
 엔터티 이름: {entity_name}
 엔터티 유형: {entity_type}
@@ -776,8 +1001,8 @@ class OasisProfileGenerator:
 
 아래 필드를 포함하는 JSON을 생성하세요:
 
-1. bio: 공식 계정 소개문, 한국어 2~3문장
-2. persona: 상세 계정/기관 설정 설명(한국어 순문단), 다음 내용을 포함:
+1. bio: 공식 계정 소개문, 지정된 출력 언어 2~3문장
+2. persona: 상세 계정/기관 설정 설명(지정된 출력 언어 순문단), 다음 내용을 포함:
    - 기관 기본 정보(성격, 배경, 기능)
    - 계정 포지션과 목표 독자
    - 발화 스타일과 금기 표현
@@ -787,16 +1012,65 @@ class OasisProfileGenerator:
 3. age: 고정값 30
 4. gender: 고정값 "other"
 5. mbti: 계정 스타일을 설명하는 MBTI
-6. country: 국가/지역명 (한국어, 예: "대만", "중국", "일본", "미국")
-7. profession: 기관/조직 역할 설명 (한국어)
-8. interested_topics: 주요 관심 주제 배열 (한국어)
+6. country: 국가/지역명 (지정된 출력 언어)
+7. profession: 기관/조직 역할 설명 (지정된 출력 언어)
+8. interested_topics: 주요 관심 주제 배열 (지정된 출력 언어)
 
 중요:
+- {output_instruction}
 - 모든 필드 값은 문자열 또는 숫자만 사용하고 null은 쓰지 마세요.
-- persona는 하나의 연속된 한국어 문단으로 작성하세요.
+- persona는 하나의 연속된 문단으로 작성하세요.
 - 중국어를 쓰지 마세요.
 - age는 30, gender는 "other" 로 고정하세요.
 - 기관 계정의 발화 스타일은 해당 조직의 역할과 위상에 맞아야 합니다."""
+
+    def _build_group_persona_prompt_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        context: str
+    ) -> str:
+        """Build a detailed official account prompt for group entities in English."""
+        attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else self._empty_prompt_value()
+        context_str = context[:3000] if context else self._empty_context_value()
+        output_instruction = self._output_language_instruction_en()
+
+        return f"""Create a detailed official account profile for the organization or group entity below. Preserve realistic context as much as possible and strictly follow the output language instruction.
+
+Entity name: {entity_name}
+Entity type: {entity_type}
+Entity summary: {entity_summary}
+Entity attributes: {attrs_str}
+
+Context information:
+{context_str}
+
+Generate JSON with these exact field names:
+
+1. bio: 2-3 sentence official account introduction
+2. persona: detailed account or organization profile in one continuous paragraph, including:
+   - Basic organization information such as nature, background, and function
+   - Account position and target audience
+   - Speaking style and prohibited expressions
+   - Posting pattern and active hours
+   - Position on key issues and response style
+   - Prior reactions and memories related to this event
+3. age: fixed value 30
+4. gender: fixed value "other"
+5. mbti: MBTI type describing the account style
+6. country: country or region name
+7. profession: organization or institution role description
+8. interested_topics: array of main interested topics
+
+Important:
+- {output_instruction}
+- Use only strings or numbers for field values and do not use null.
+- Write persona as one continuous paragraph.
+- Do not use Chinese.
+- age must be 30, and gender must be "other".
+- The account speaking style must fit the organization's role and status."""
     
     def _generate_profile_rule_based(
         self,
@@ -805,10 +1079,15 @@ class OasisProfileGenerator:
         entity_summary: str,
         entity_attributes: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """使用规则生成基础人设"""
+        """규칙 기반으로 기본 페르소나를 생성한다."""
         
-        # 根据实体类型生成不同的人设
+        # 엔터티 유형에 따라 다른 페르소나를 생성한다.
         entity_type_lower = self._normalize_entity_type_key(entity_type)
+
+        if self._is_english_output():
+            return self._generate_profile_rule_based_en(
+                entity_name, entity_type, entity_summary, entity_attributes, entity_type_lower
+            )
         
         if entity_type_lower in ["student", "alumni", "학생", "동문"]:
             return {
@@ -838,9 +1117,9 @@ class OasisProfileGenerator:
             return {
                 "bio": f"{entity_name} 계정은 주요 현안과 속보를 빠르게 전달하고 공적 담론을 연결하는 매체 성격의 계정이다.",
                 "persona": f"{entity_name}는 뉴스와 이슈 해설을 제공하는 매체형 계정이다. 핵심 사실을 빠르게 전달하면서도 확산력이 큰 표현을 선호하며, 대중이 사건을 어떻게 받아들이는지 민감하게 반영한다.",
-                "age": 30,  # 机构虚拟年龄
-                "gender": "other",  # 机构使用other
-                "mbti": "ISTJ",  # 机构风格：严谨保守
+                "age": 30,  # 기관 가상 나이
+                "gender": "other",  # 기관은 other 사용
+                "mbti": "ISTJ",  # 기관 스타일: 엄격하고 보수적
                 "country": self._infer_country_label(entity_name, entity_type, entity_summary),
                 "profession": "미디어 또는 플랫폼 운영 계정",
                 "interested_topics": ["일반 뉴스", "현안", "공공 이슈"],
@@ -850,16 +1129,16 @@ class OasisProfileGenerator:
             return {
                 "bio": f"{entity_name} 계정은 공식 입장과 공지를 전달하며 이해관계자와의 소통을 담당하는 기관 계정이다.",
                 "persona": f"{entity_name}는 제도적 책임과 공식성을 가진 기관형 계정이다. 이슈가 발생하면 사실관계 정리, 입장 표명, 대응 계획 안내를 중심으로 발언하며, 조직의 신뢰도와 일관성을 유지하는 데 초점을 둔다.",
-                "age": 30,  # 机构虚拟年龄
-                "gender": "other",  # 机构使用other
-                "mbti": "ISTJ",  # 机构风格：严谨保守
+                "age": 30,  # 기관 가상 나이
+                "gender": "other",  # 기관은 other 사용
+                "mbti": "ISTJ",  # 기관 스타일: 엄격하고 보수적
                 "country": self._infer_country_label(entity_name, entity_type, entity_summary),
                 "profession": self._infer_profession_label(entity_type),
                 "interested_topics": ["공공 정책", "커뮤니티", "공식 공지"],
             }
         
         else:
-            # 默认人设
+            # 기본 페르소나
             return {
                 "bio": entity_summary[:150] if entity_summary else f"{entity_type}: {entity_name}",
                 "persona": entity_summary or f"{entity_name}는 온라인 공론장에서 의견을 내고 반응을 주고받는 {entity_type.lower()} 유형의 개체다.",
@@ -870,9 +1149,76 @@ class OasisProfileGenerator:
                 "profession": self._infer_profession_label(entity_type),
                 "interested_topics": ["일반 이슈", "사회 현안"],
             }
+
+    def _generate_profile_rule_based_en(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any],
+        entity_type_lower: str,
+    ) -> Dict[str, Any]:
+        if entity_type_lower in ["student", "alumni", "학생", "동문"]:
+            return {
+                "bio": f"{entity_name} is a student-oriented account that follows education, social issues, and technology.",
+                "persona": f"{entity_name} has a student background and connects social issues with education and personal experience. Online, the persona balances peer-level concerns, fact checking, and emotional expression.",
+                "age": random.randint(18, 30),
+                "gender": random.choice(["male", "female"]),
+                "mbti": random.choice(self.MBTI_TYPES),
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": "Student or young community member",
+                "interested_topics": ["Education", "Social issues", "Technology"],
+            }
+
+        if entity_type_lower in ["publicfigure", "expert", "faculty", "공인", "전문가", "교직원"]:
+            return {
+                "bio": f"{entity_name} is a public-facing account that interprets public issues through expertise and commentary.",
+                "persona": f"{entity_name} speaks with an expert-oriented persona. The account favors structured analysis, institutional context, and clear communication over simple emotional reaction.",
+                "age": random.randint(35, 60),
+                "gender": random.choice(["male", "female"]),
+                "mbti": random.choice(["ENTJ", "INTJ", "ENTP", "INTP"]),
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": entity_attributes.get("occupation", "Expert or public commentator"),
+                "interested_topics": ["Politics", "Economy", "Social culture"],
+            }
+
+        if entity_type_lower in ["mediaoutlet", "socialmediaplatform", "언론사", "플랫폼"]:
+            return {
+                "bio": f"{entity_name} is a media-oriented account that shares news, updates, and public discussion cues.",
+                "persona": f"{entity_name} acts as an information channel for news and issue commentary. The account values fast updates, clear framing, and awareness of audience reaction.",
+                "age": 30,
+                "gender": "other",
+                "mbti": "ISTJ",
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": "Media or platform operations account",
+                "interested_topics": ["General news", "Current affairs", "Public issues"],
+            }
+
+        if entity_type_lower in ["university", "governmentagency", "ngo", "organization", "대학", "정부기관", "시민단체", "조직"]:
+            return {
+                "bio": f"{entity_name} is an institutional account that communicates official positions, notices, and stakeholder updates.",
+                "persona": f"{entity_name} represents an organization with an official and accountable voice. The account focuses on factual clarification, position statements, and continuity of public trust.",
+                "age": 30,
+                "gender": "other",
+                "mbti": "ISTJ",
+                "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+                "profession": self._infer_profession_label(entity_type),
+                "interested_topics": ["Public policy", "Community", "Official notices"],
+            }
+
+        return {
+            "bio": self._default_bio(entity_name, entity_type, entity_summary),
+            "persona": self._default_persona(entity_name, entity_type, entity_summary),
+            "age": random.randint(25, 50),
+            "gender": random.choice(["male", "female"]),
+            "mbti": random.choice(self.MBTI_TYPES),
+            "country": self._infer_country_label(entity_name, entity_type, entity_summary),
+            "profession": self._infer_profession_label(entity_type),
+            "interested_topics": ["General issues", "Social trends"],
+        }
     
     def set_graph_id(self, graph_id: str):
-        """设置图谱ID用于Zep检索"""
+        """Zep 검색에 사용할 graph ID를 설정한다."""
         self.graph_id = graph_id
 
     def _infer_country_label(
@@ -883,6 +1229,12 @@ class OasisProfileGenerator:
         context: str = ""
     ) -> str:
         haystack = f"{entity_name}\n{entity_type}\n{entity_summary}\n{context}".lower()
+        if self._is_english_output():
+            for country, keywords in self.EN_COUNTRY_KEYWORDS.items():
+                if any(keyword in haystack for keyword in keywords):
+                    return country
+            return random.choice(self.EN_COUNTRIES)
+
         for country, keywords in self.COUNTRY_KEYWORDS.items():
             if any(keyword in haystack for keyword in keywords):
                 return country
@@ -890,6 +1242,47 @@ class OasisProfileGenerator:
 
     def _infer_profession_label(self, entity_type: str) -> str:
         normalized = (entity_type or "Entity").strip()
+        if self._is_english_output():
+            english_mapping = {
+                "governmentagency": "Government or public agency account",
+                "organization": "Organization or institution account",
+                "ngo": "Civic or nonprofit organization account",
+                "mediaoutlet": "News or media account",
+                "company": "Company or brand account",
+                "university": "University or education institution account",
+                "community": "Community operations account",
+                "socialmediaplatform": "Platform operations account",
+                "student": "Student or young community member",
+                "alumni": "Alumni or community member",
+                "professor": "Professor or academic account",
+                "person": "Individual account",
+                "publicfigure": "Public figure account",
+                "expert": "Expert or public commentator",
+                "faculty": "Faculty or education professional",
+                "official": "Public official account",
+                "journalist": "Journalist or media commentator",
+                "activist": "Activist or civic participant",
+                "학생": "Student or young community member",
+                "동문": "Alumni or community member",
+                "교수": "Professor or academic account",
+                "개인": "Individual account",
+                "공인": "Public figure account",
+                "전문가": "Expert or public commentator",
+                "교직원": "Faculty or education professional",
+                "공무원": "Public official account",
+                "기자": "Journalist or media commentator",
+                "활동가": "Activist or civic participant",
+                "정부기관": "Government or public agency account",
+                "조직": "Organization or institution account",
+                "시민단체": "Civic or nonprofit organization account",
+                "언론사": "News or media account",
+                "기업": "Company or brand account",
+                "대학": "University or education institution account",
+                "커뮤니티": "Community operations account",
+                "플랫폼": "Platform operations account",
+            }
+            return english_mapping.get(self._normalize_entity_type_key(normalized), normalized)
+
         mapping = {
             "governmentagency": "정부·공공기관 계정",
             "organization": "조직·기관 계정",
@@ -929,52 +1322,52 @@ class OasisProfileGenerator:
         output_platform: str = "reddit"
     ) -> List[OasisAgentProfile]:
         """
-        批量从实体生成Agent Profile（支持并行生成）
+        엔터티 목록에서 Agent Profile을 일괄 생성한다(병렬 생성 지원).
         
         Args:
-            entities: 实体列表
-            use_llm: 是否使用LLM生成详细人设
-            progress_callback: 进度回调函数 (current, total, message)
-            graph_id: 图谱ID，用于Zep检索获取更丰富上下文
-            parallel_count: 并行生成数量，默认5
-            realtime_output_path: 实时写入的文件路径（如果提供，每生成一个就写入一次）
-            output_platform: 输出平台格式 ("reddit" 或 "twitter")
+            entities: 엔터티 목록
+            use_llm: LLM으로 상세 페르소나를 생성할지 여부
+            progress_callback: 진행률 콜백 함수 (current, total, message)
+            graph_id: Zep 검색으로 더 풍부한 문맥을 가져올 graph ID
+            parallel_count: 병렬 생성 개수, 기본값 5
+            realtime_output_path: 실시간으로 쓸 파일 경로(제공 시 하나 생성할 때마다 저장)
+            output_platform: 출력 플랫폼 형식("reddit" 또는 "twitter")
             
         Returns:
-            Agent Profile列表
+            Agent Profile 목록
         """
         import concurrent.futures
         from threading import Lock
         
-        # 设置graph_id用于Zep检索
+        # Zep 검색에 사용할 graph_id 설정
         if graph_id:
             self.graph_id = graph_id
         
         total = len(entities)
-        profiles = [None] * total  # 预分配列表保持顺序
-        completed_count = [0]  # 使用列表以便在闭包中修改
+        profiles = [None] * total  # 순서 유지를 위해 목록을 미리 할당
+        completed_count = [0]  # 클로저에서 수정할 수 있도록 목록 사용
         lock = Lock()
         
-        # 实时写入文件的辅助函数
+        # 파일에 실시간으로 쓰는 보조 함수
         def save_profiles_realtime():
-            """实时保存已生成的 profiles 到文件"""
+            """생성된 profiles를 파일에 실시간으로 저장한다."""
             if not realtime_output_path:
                 return
             
             with lock:
-                # 过滤出已生成的 profiles
+                # 생성이 완료된 profiles만 필터링
                 existing_profiles = [p for p in profiles if p is not None]
                 if not existing_profiles:
                     return
                 
                 try:
                     if output_platform == "reddit":
-                        # Reddit JSON 格式
+                        # Reddit JSON 형식
                         profiles_data = [p.to_reddit_format() for p in existing_profiles]
                         with open(realtime_output_path, 'w', encoding='utf-8') as f:
                             json.dump(profiles_data, f, ensure_ascii=False, indent=2)
                     else:
-                        # Twitter CSV 格式
+                        # Twitter CSV 형식
                         import csv
                         profiles_data = [p.to_twitter_format() for p in existing_profiles]
                         if profiles_data:
@@ -987,7 +1380,7 @@ class OasisProfileGenerator:
                     logger.warning(f"profiles 실시간 저장 실패: {e}")
         
         def generate_single_profile(idx: int, entity: EntityNode) -> tuple:
-            """生成单个profile的工作函数"""
+            """단일 profile을 생성하는 작업 함수."""
             entity_type = entity.get_entity_type() or "Entity"
             
             try:
@@ -997,14 +1390,14 @@ class OasisProfileGenerator:
                     use_llm=use_llm
                 )
                 
-                # 实时输出生成的人设到控制台和日志
+                # 생성된 페르소나를 콘솔에 실시간 출력
                 self._print_generated_profile(entity.name, entity_type, profile)
                 
                 return idx, profile, None
                 
             except Exception as e:
-                logger.error(f"生成实体 {entity.name} 的人设失败: {str(e)}")
-                # 创建一个基础profile
+                logger.error(f"엔터티 {entity.name}의 페르소나 생성 실패: {str(e)}")
+                # 기본 profile 생성
                 fallback_profile = OasisAgentProfile(
                     user_id=idx,
                     user_name=self._generate_username(entity.name),
@@ -1018,18 +1411,18 @@ class OasisProfileGenerator:
         
         logger.info(f"Agent 페르소나 {total}개를 병렬 생성 시작 (병렬 수: {parallel_count})...")
         print(f"\n{'='*60}")
-        print(f"开始生成Agent人设 - 共 {total} 个实体，并行数: {parallel_count}")
+        print(f"Agent 페르소나 생성 시작 - 총 {total}개 엔터티, 병렬 수: {parallel_count}")
         print(f"{'='*60}\n")
         
-        # 使用线程池并行执行
+        # 스레드 풀로 병렬 실행
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_count) as executor:
-            # 提交所有任务
+            # 모든 작업 제출
             future_to_entity = {
                 executor.submit(generate_single_profile, idx, entity): (idx, entity)
                 for idx, entity in enumerate(entities)
             }
             
-            # 收集结果
+            # 결과 수집
             for future in concurrent.futures.as_completed(future_to_entity):
                 idx, entity = future_to_entity[future]
                 entity_type = entity.get_entity_type() or "Entity"
@@ -1042,14 +1435,14 @@ class OasisProfileGenerator:
                         completed_count[0] += 1
                         current = completed_count[0]
                     
-                    # 实时写入文件
+                    # 파일에 실시간 쓰기
                     save_profiles_realtime()
                     
                     if progress_callback:
                         progress_callback(
                             current, 
                             total, 
-                            f"已完成 {current}/{total}: {entity.name}（{entity_type}）"
+                            f"완료 {current}/{total}: {entity.name}({entity_type})"
                         )
                     
                     if error:
@@ -1070,44 +1463,44 @@ class OasisProfileGenerator:
                         source_entity_uuid=entity.uuid,
                         source_entity_type=entity_type,
                     )
-                    # 实时写入文件（即使是备用人设）
+                    # 대체 페르소나도 파일에 실시간 쓰기
                     save_profiles_realtime()
         
         print(f"\n{'='*60}")
-        print(f"人设生成完成！共生成 {len([p for p in profiles if p])} 个Agent")
+        print(f"페르소나 생성 완료! 총 {len([p for p in profiles if p])}개 Agent 생성")
         print(f"{'='*60}\n")
         
         return profiles
     
     def _print_generated_profile(self, entity_name: str, entity_type: str, profile: OasisAgentProfile):
-        """实时输出生成的人设到控制台（完整内容，不截断）"""
+        """생성된 페르소나를 콘솔에 실시간 출력한다(전체 내용, 자르지 않음)."""
         separator = "-" * 70
         
-        # 构建完整输出内容（不截断）
+        # 전체 출력 내용을 구성한다(자르지 않음).
         topics_str = ', '.join(profile.interested_topics) if profile.interested_topics else '없음'
         
         output_lines = [
             f"\n{separator}",
-            f"[已生成] {entity_name} ({entity_type})",
+            f"[생성됨] {entity_name} ({entity_type})",
             f"{separator}",
-            f"用户名: {profile.user_name}",
+            f"사용자명: {profile.user_name}",
             f"",
-            f"【简介】",
+            f"【소개】",
             f"{profile.bio}",
             f"",
-            f"【详细人设】",
+            f"【상세 페르소나】",
             f"{profile.persona}",
             f"",
-            f"【基本属性】",
-            f"年龄: {profile.age} | 性别: {profile.gender} | MBTI: {profile.mbti}",
-            f"职业: {profile.profession} | 国家: {profile.country}",
-            f"兴趣话题: {topics_str}",
+            f"【기본 속성】",
+            f"나이: {profile.age} | 성별: {profile.gender} | MBTI: {profile.mbti}",
+            f"직업: {profile.profession} | 국가: {profile.country}",
+            f"관심 주제: {topics_str}",
             separator
         ]
         
         output = "\n".join(output_lines)
         
-        # 只输出到控制台（避免重复，logger不再输出完整内容）
+        # 콘솔에만 출력한다(중복 방지를 위해 logger에는 전체 내용을 남기지 않음).
         print(output)
     
     def save_profiles(
@@ -1117,16 +1510,16 @@ class OasisProfileGenerator:
         platform: str = "reddit"
     ):
         """
-        保存Profile到文件（根据平台选择正确格式）
-        
-        OASIS平台格式要求：
-        - Twitter: CSV格式
-        - Reddit: JSON格式
+        Profile을 파일로 저장한다(플랫폼에 맞는 형식 선택).
+
+        OASIS 플랫폼 형식 요구사항:
+        - Twitter: CSV 형식
+        - Reddit: JSON 형식
         
         Args:
-            profiles: Profile列表
-            file_path: 文件路径
-            platform: 平台类型 ("reddit" 或 "twitter")
+            profiles: Profile 목록
+            file_path: 파일 경로
+            platform: 플랫폼 유형("reddit" 또는 "twitter")
         """
         if platform == "twitter":
             self._save_twitter_csv(profiles, file_path)
@@ -1135,50 +1528,50 @@ class OasisProfileGenerator:
     
     def _save_twitter_csv(self, profiles: List[OasisAgentProfile], file_path: str):
         """
-        保存Twitter Profile为CSV格式（符合OASIS官方要求）
-        
-        OASIS Twitter要求的CSV字段：
-        - user_id: 用户ID（根据CSV顺序从0开始）
-        - name: 用户真实姓名
-        - username: 系统中的用户名
-        - user_char: 详细人设描述（注入到LLM系统提示中，指导Agent行为）
-        - description: 简短的公开简介（显示在用户资料页面）
-        
-        user_char vs description 区别：
-        - user_char: 内部使用，LLM系统提示，决定Agent如何思考和行动
-        - description: 外部显示，其他用户可见的简介
+        Twitter Profile을 CSV 형식으로 저장한다(OASIS 공식 요구사항 준수).
+
+        OASIS Twitter가 요구하는 CSV 필드:
+        - user_id: 사용자 ID(CSV 순서 기준 0부터 시작)
+        - name: 사용자 실명
+        - username: 시스템의 사용자명
+        - user_char: 상세 페르소나 설명(LLM 시스템 프롬프트에 주입되어 Agent 행동을 안내)
+        - description: 짧은 공개 소개(사용자 프로필 페이지에 표시)
+
+        user_char vs description 차이:
+        - user_char: 내부 사용, LLM 시스템 프롬프트, Agent의 사고와 행동 결정
+        - description: 외부 표시, 다른 사용자에게 보이는 소개
         """
         import csv
         
-        # 确保文件扩展名是.csv
+        # 파일 확장자가 .csv인지 확인
         if not file_path.endswith('.csv'):
             file_path = file_path.replace('.json', '.csv')
         
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
-            # 写入OASIS要求的表头
+            # OASIS가 요구하는 헤더 쓰기
             headers = ['user_id', 'name', 'username', 'user_char', 'description']
             writer.writerow(headers)
             
-            # 写入数据行
+            # 데이터 행 쓰기
             for idx, profile in enumerate(profiles):
-                # user_char: 完整人设（bio + persona），用于LLM系统提示
+                # user_char: 전체 페르소나(bio + persona), LLM 시스템 프롬프트에 사용
                 user_char = profile.bio
                 if profile.persona and profile.persona != profile.bio:
                     user_char = f"{profile.bio} {profile.persona}"
-                # 处理换行符（CSV中用空格替代）
+                # 줄바꿈 처리(CSV에서는 공백으로 대체)
                 user_char = user_char.replace('\n', ' ').replace('\r', ' ')
                 
-                # description: 简短简介，用于外部显示
+                # description: 외부 표시에 사용할 짧은 소개
                 description = profile.bio.replace('\n', ' ').replace('\r', ' ')
                 
                 row = [
-                    idx,                    # user_id: 从0开始的顺序ID
-                    profile.name,           # name: 真实姓名
-                    profile.user_name,      # username: 用户名
-                    user_char,              # user_char: 完整人设（内部LLM使用）
-                    description             # description: 简短简介（外部显示）
+                    idx,                    # user_id: 0부터 시작하는 순차 ID
+                    profile.name,           # name: 실명
+                    profile.user_name,      # username: 사용자명
+                    user_char,              # user_char: 전체 페르소나(내부 LLM 사용)
+                    description             # description: 짧은 소개(외부 표시)
                 ]
                 writer.writerow(row)
         
@@ -1186,22 +1579,22 @@ class OasisProfileGenerator:
     
     def _normalize_gender(self, gender: Optional[str]) -> str:
         """
-        标准化gender字段为OASIS要求的英文格式
-        
-        OASIS要求: male, female, other
+        gender 필드를 OASIS가 요구하는 영어 형식으로 정규화한다.
+
+        OASIS 요구사항: male, female, other
         """
         if not gender:
             return "other"
         
         gender_lower = gender.lower().strip()
         
-        # 中文映射
+        # 기존 중국어 매핑
         gender_map = {
             "男": "male",
             "女": "female",
             "机构": "other",
             "其他": "other",
-            # 英文已有
+            # 기존 영어 값
             "male": "male",
             "female": "female",
             "other": "other",
@@ -1211,41 +1604,41 @@ class OasisProfileGenerator:
     
     def _save_reddit_json(self, profiles: List[OasisAgentProfile], file_path: str):
         """
-        保存Reddit Profile为JSON格式
-        
-        使用与 to_reddit_format() 一致的格式，确保 OASIS 能正确读取。
-        必须包含 user_id 字段，这是 OASIS agent_graph.get_agent() 匹配的关键！
-        
-        必需字段：
-        - user_id: 用户ID（整数，用于匹配 initial_posts 中的 poster_agent_id）
-        - username: 用户名
-        - name: 显示名称
-        - bio: 简介
-        - persona: 详细人设
-        - age: 年龄（整数）
-        - gender: "male", "female", 或 "other"
-        - mbti: MBTI类型
-        - country: 国家
+        Reddit Profile을 JSON 형식으로 저장한다.
+
+        to_reddit_format()과 일치하는 형식을 사용해 OASIS가 올바르게 읽도록 한다.
+        user_id 필드는 OASIS agent_graph.get_agent() 매칭에 필요하므로 반드시 포함한다.
+
+        필수 필드:
+        - user_id: 사용자 ID(정수, initial_posts의 poster_agent_id 매칭에 사용)
+        - username: 사용자명
+        - name: 표시 이름
+        - bio: 소개
+        - persona: 상세 페르소나
+        - age: 나이(정수)
+        - gender: "male", "female" 또는 "other"
+        - mbti: MBTI 유형
+        - country: 국가
         """
         data = []
         for idx, profile in enumerate(profiles):
-            # 使用与 to_reddit_format() 一致的格式
+            # to_reddit_format()과 일치하는 형식 사용
             item = {
-                "user_id": profile.user_id if profile.user_id is not None else idx,  # 关键：必须包含 user_id
+                "user_id": profile.user_id if profile.user_id is not None else idx,  # 핵심: user_id를 반드시 포함
                 "username": profile.user_name,
                 "name": profile.name,
                 "bio": profile.bio[:150] if profile.bio else f"{profile.name}",
                 "persona": profile.persona or f"{profile.name}는 공적 논의에 참여하는 시뮬레이션 개체입니다.",
                 "karma": profile.karma if profile.karma else 1000,
                 "created_at": profile.created_at,
-                # OASIS必需字段 - 确保都有默认值
+                # OASIS 필수 필드 - 모두 기본값을 갖도록 보장
                 "age": profile.age if profile.age else 30,
                 "gender": self._normalize_gender(profile.gender),
                 "mbti": profile.mbti if profile.mbti else "ISTJ",
                 "country": profile.country if profile.country else "미상",
             }
             
-            # 可选字段
+            # 선택 필드
             if profile.profession:
                 item["profession"] = profile.profession
             if profile.interested_topics:
@@ -1258,13 +1651,13 @@ class OasisProfileGenerator:
         
         logger.info(f"Reddit Profile {len(profiles)}개를 {file_path}에 저장했습니다 (JSON 형식, user_id 포함)")
     
-    # 保留旧方法名作为别名，保持向后兼容
+    # 이전 메서드명을 별칭으로 보존해 하위 호환 유지
     def save_profiles_to_json(
         self,
         profiles: List[OasisAgentProfile],
         file_path: str,
         platform: str = "reddit"
     ):
-        """[已废弃] 请使用 save_profiles() 方法"""
+        """[폐기 예정] save_profiles() 메서드를 사용한다."""
         logger.warning("save_profiles_to_json은 폐기 예정입니다. save_profiles를 사용하세요")
         self.save_profiles(profiles, file_path, platform)

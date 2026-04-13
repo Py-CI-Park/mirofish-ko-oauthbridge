@@ -42,6 +42,8 @@ class Config:
     LLM_API_KEY = os.environ.get('LLM_API_KEY', 'local-oauth-bridge')
     LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://127.0.0.1:8787/v1')
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-5.4-mini')
+    LLM_PROMPT_LANGUAGE = os.environ.get('LLM_PROMPT_LANGUAGE', 'legacy')
+    LLM_OUTPUT_LANGUAGE = os.environ.get('LLM_OUTPUT_LANGUAGE', 'ko')
     
     # Zep 설정
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
