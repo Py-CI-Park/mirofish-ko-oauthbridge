@@ -49,7 +49,8 @@
             <span class="step-title">{{ t('step2.agentTitle') }}</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 1" class="badge success">{{ t('step2.completed') }}</span>
+            <span v-if="prepareStageFailure" class="badge error">{{ t('common.status.error') }}</span>
+            <span v-else-if="phase > 1" class="badge success">{{ t('step2.completed') }}</span>
             <span v-else-if="phase === 1" class="badge processing">{{ prepareProgress }}%</span>
             <span v-else class="badge pending">{{ t('step2.waiting') }}</span>
           </div>
@@ -60,6 +61,71 @@
           <p class="description">
             {{ t('step2.agentDesc') }}
           </p>
+
+          <div class="info-card guide-card">
+            <div class="guide-title">{{ t('step2.inputGuideTitle') }}</div>
+            <ul class="guide-list">
+              <li>{{ t('step2.inputGuideSignals') }}</li>
+              <li>{{ t('step2.inputGuideTechnicalOnly') }}</li>
+            </ul>
+          </div>
+
+          <div v-if="prepareStageFailure" class="failure-card">
+            <div class="failure-header">
+              <div>
+                <h4 class="failure-title">{{ prepareStageFailure.title }}</h4>
+                <p class="failure-message">{{ prepareStageFailure.message }}</p>
+              </div>
+              <span
+                v-if="shouldShowFailureDiagnostics(prepareStageFailure)"
+                class="failure-badge"
+              >{{ formatMatchMode(prepareStageFailure.filterMode) }}</span>
+            </div>
+
+            <div
+              v-if="shouldShowFailureDiagnostics(prepareStageFailure)"
+              class="failure-diagnostics"
+            >
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureTotalNodes') }}</span>
+                <span class="failure-value">{{ prepareStageFailure.readiness?.total_nodes ?? '-' }}</span>
+              </div>
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureMatchedEntities') }}</span>
+                <span class="failure-value">{{ prepareStageFailure.readiness?.matched_entities ?? '-' }}</span>
+              </div>
+              <div
+                v-if="prepareStageFailure.readiness?.labels_present_count !== undefined && prepareStageFailure.readiness?.labels_present_count !== null"
+                class="failure-diagnostic"
+              >
+                <span class="failure-label">{{ t('step2.failureLabelsPresent') }}</span>
+                <span class="failure-value">{{ prepareStageFailure.readiness.labels_present_count }}</span>
+              </div>
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureFilterMode') }}</span>
+                <span class="failure-value">{{ formatMatchMode(prepareStageFailure.filterMode) }}</span>
+              </div>
+            </div>
+
+            <div class="failure-actions">
+              <button
+                v-if="canRetryWithRelaxedMatching"
+                type="button"
+                class="retry-btn"
+                @click="retryPrepareWithRelaxedMatching"
+              >
+                {{ t('step2.retryRelaxed') }}
+              </button>
+              <button
+                v-else
+                type="button"
+                class="retry-btn secondary"
+                @click="emit('go-back')"
+              >
+                {{ t('step2.reviewInputAction') }}
+              </button>
+            </div>
+          </div>
 
 
           <div v-if="profiles.length > 0" class="stats-grid">
@@ -121,7 +187,8 @@
             <span class="step-title">{{ t('step2.configTitle') }}</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 2" class="badge success">{{ t('step2.completed') }}</span>
+            <span v-if="configStageFailure" class="badge error">{{ t('common.status.error') }}</span>
+            <span v-else-if="phase > 2" class="badge success">{{ t('step2.completed') }}</span>
             <span v-else-if="phase === 2" class="badge processing">{{ t('step2.generating') }}</span>
             <span v-else class="badge pending">{{ t('step2.waiting') }}</span>
           </div>
@@ -132,6 +199,44 @@
           <p class="description">
             {{ t('step2.configDesc') }}
           </p>
+
+          <div v-if="configStageFailure" class="failure-card">
+            <div class="failure-header">
+              <div>
+                <h4 class="failure-title">{{ configStageFailure.title }}</h4>
+                <p class="failure-message">{{ configStageFailure.message }}</p>
+              </div>
+              <span
+                v-if="shouldShowFailureDiagnostics(configStageFailure)"
+                class="failure-badge"
+              >{{ formatMatchMode(configStageFailure.filterMode) }}</span>
+            </div>
+
+            <div
+              v-if="shouldShowFailureDiagnostics(configStageFailure)"
+              class="failure-diagnostics"
+            >
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureTotalNodes') }}</span>
+                <span class="failure-value">{{ configStageFailure.readiness?.total_nodes ?? '-' }}</span>
+              </div>
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureMatchedEntities') }}</span>
+                <span class="failure-value">{{ configStageFailure.readiness?.matched_entities ?? '-' }}</span>
+              </div>
+              <div
+                v-if="configStageFailure.readiness?.labels_present_count !== undefined && configStageFailure.readiness?.labels_present_count !== null"
+                class="failure-diagnostic"
+              >
+                <span class="failure-label">{{ t('step2.failureLabelsPresent') }}</span>
+                <span class="failure-value">{{ configStageFailure.readiness.labels_present_count }}</span>
+              </div>
+              <div class="failure-diagnostic">
+                <span class="failure-label">{{ t('step2.failureFilterMode') }}</span>
+                <span class="failure-value">{{ formatMatchMode(configStageFailure.filterMode) }}</span>
+              </div>
+            </div>
+          </div>
 
 
           <div v-if="simulationConfig" class="config-detail-panel">
@@ -661,8 +766,11 @@ const profiles = ref([])
 const entityTypes = ref([])
 const expectedTotal = ref(null)
 const simulationConfig = ref(null)
+const prepareFailure = ref(null)
+const entityMatchMode = ref('strict')
 const selectedProfile = ref(null)
 const showProfilesDetail = ref(true)
+const activePrepareAttemptId = ref(0)
 
 // 로그 중복 제거: 마지막 출력의 주요 정보를 기록합니다.
 let lastLoggedMessage = ''
@@ -682,7 +790,7 @@ watch(currentStage, (newStage) => {
     // 구성 생성 단계에 진입하고 구성에 대한 폴링을 시작합니다.
     if (!configTimer) {
       addLog('듀얼 플랫폼 시뮬레이션 구성 생성 시작...')
-      startConfigPolling()
+      startConfigPolling(activePrepareAttemptId.value)
     }
   } else if (newStage === '시뮬레이션 스크립트 준비' || newStage === 'copying_scripts') {
     phase.value = 2 // 아직 구성 단계입니다.
@@ -717,6 +825,19 @@ const displayProfiles = computed(() => {
   return profiles.value.slice(0, 6)
 })
 
+const prepareStageFailure = computed(() => (
+  prepareFailure.value?.stage === 'prepare' ? prepareFailure.value : null
+))
+
+const configStageFailure = computed(() => (
+  prepareFailure.value?.stage === 'config' ? prepareFailure.value : null
+))
+
+const canRetryWithRelaxedMatching = computed(() => (
+  prepareStageFailure.value?.kind === 'entity_matching'
+    && prepareStageFailure.value?.filterMode !== 'relaxed'
+))
+
 // 대리인에 따르면_id해당 사용자 이름을 가져옵니다
 const getAgentUsername = (agentId) => {
   if (profiles.value && profiles.value.length > agentId && agentId >= 0) {
@@ -740,9 +861,83 @@ const getGenderLabel = (gender) => {
   return gender || '-'
 }
 
+const formatMatchMode = (mode) => {
+  if (mode === 'relaxed') return t('step2.matchModeRelaxed')
+  if (mode === 'strict') return t('step2.matchModeStrict')
+  return mode || '-'
+}
+
+const shouldShowFailureDiagnostics = (failure) => (
+  failure?.kind === 'entity_matching'
+)
+
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
+}
+
+const resetPrepareFailure = () => {
+  prepareFailure.value = null
+}
+
+const beginPrepareAttempt = () => {
+  activePrepareAttemptId.value += 1
+  return activePrepareAttemptId.value
+}
+
+const invalidatePrepareAttempt = () => {
+  activePrepareAttemptId.value += 1
+}
+
+const isStaleAttempt = (attemptId) => attemptId !== activePrepareAttemptId.value
+
+const resetPreparationView = () => {
+  stopPolling()
+  stopProfilesPolling()
+  stopConfigPolling()
+  taskId.value = null
+  prepareProgress.value = 0
+  currentStage.value = ''
+  progressMessage.value = ''
+  profiles.value = []
+  entityTypes.value = []
+  expectedTotal.value = null
+  simulationConfig.value = null
+  selectedProfile.value = null
+  lastLoggedMessage = ''
+  lastLoggedProfileCount = 0
+  lastLoggedConfigStage = ''
+}
+
+const setPrepareFailure = ({ stage, kind = 'prepare_runtime', message, readiness = {}, filterMode = 'strict' }) => {
+  const resolvedStage = stage === 'config' ? 'config' : 'prepare'
+  prepareFailure.value = {
+    stage: resolvedStage,
+    kind,
+    title: t(resolvedStage === 'config' ? 'step2.configFailureTitle' : 'step2.prepareFailureTitle'),
+    message: message || t(resolvedStage === 'config' ? 'step2.configFailureMessage' : 'step2.prepareFailureMessage'),
+    readiness,
+    filterMode
+  }
+  phase.value = resolvedStage === 'config' ? 2 : 1
+}
+
+const handlePrepareFailure = ({ stage, kind = 'prepare_runtime', message, readiness = {}, filterMode = 'strict', attemptId = activePrepareAttemptId.value }) => {
+  if (isStaleAttempt(attemptId)) return
+  invalidatePrepareAttempt()
+  stopPolling()
+  stopProfilesPolling()
+  stopConfigPolling()
+  setPrepareFailure({ stage, kind, message, readiness, filterMode })
+  addLog(`준비 실패: ${prepareFailure.value.message}`)
+  emit('update-status', 'error')
+}
+
+const retryPrepareWithRelaxedMatching = async () => {
+  entityMatchMode.value = 'relaxed'
+  resetPrepareFailure()
+  addLog(t('step2.retryRelaxedLog'))
+  await startPrepareSimulation({ forceRegenerate: true, entityMatchModeOverride: 'relaxed' })
 }
 
 // 시뮬레이션 시작 버튼 클릭 처리
@@ -774,7 +969,9 @@ const selectProfile = (profile) => {
 }
 
 // 자동으로 시뮬레이션 준비 시작
-const startPrepareSimulation = async () => {
+const startPrepareSimulation = async ({ forceRegenerate = false, entityMatchModeOverride = null } = {}) => {
+  const matchMode = entityMatchModeOverride || entityMatchMode.value
+
   if (!props.simulationId) {
     addLog('오류: 시뮬레이션 ID가 누락되었습니다.')
     emit('update-status', 'error')
@@ -782,6 +979,9 @@ const startPrepareSimulation = async () => {
   }
 
   // 첫 번째 단계를 완료로 표시하고 두 번째 단계를 시작하세요.
+  resetPreparationView()
+  resetPrepareFailure()
+  const attemptId = beginPrepareAttempt()
   phase.value = 1
   addLog(`모의 인스턴스가 생성되었습니다.: ${props.simulationId}`)
   addLog('시뮬레이션 환경 준비...')
@@ -791,13 +991,29 @@ const startPrepareSimulation = async () => {
     const res = await prepareSimulation({
       simulation_id: props.simulationId,
       use_llm_for_profiles: true,
-      parallel_profile_count: 5
+      parallel_profile_count: 5,
+      force_regenerate: forceRegenerate,
+      entity_match_mode: matchMode
     })
 
-    if (res.success && res.data) {
+    if (isStaleAttempt(attemptId)) return
+
+    if (!(res.success && res.data)) {
+      handlePrepareFailure({
+        stage: res.data?.failure_stage || 'prepare',
+        kind: res.data?.failure_kind || 'prepare_runtime',
+        message: res.error || t('step2.prepareFailureMessage'),
+        readiness: res.data?.entity_readiness || {},
+        filterMode: res.data?.entity_filter_mode || matchMode,
+        attemptId
+      })
+      return
+    }
+
+    {
       if (res.data.already_prepared) {
         addLog('완료된 준비작업을 감지하여 직접 활용')
-        await loadPreparedData()
+        await loadPreparedData(attemptId)
         return
       }
 
@@ -816,21 +1032,26 @@ const startPrepareSimulation = async () => {
 
       addLog('투표 준비 진행 시작...')
       // 폴링 진행 시작
-      startPolling()
+      startPolling(attemptId)
       // 실시간으로 프로필 받기 시작
-      startProfilesPolling()
-    } else {
-      addLog(`실패를 준비하다: ${res.error || '알 수 없는 오류'}`)
-      emit('update-status', 'error')
+      startProfilesPolling(attemptId)
+      return
     }
   } catch (err) {
-    addLog(`예외를 준비하다: ${err.message}`)
-    emit('update-status', 'error')
+    handlePrepareFailure({
+      stage: 'prepare',
+      kind: 'prepare_runtime',
+      message: err.message || t('step2.prepareFailureMessage'),
+      filterMode: matchMode,
+      attemptId
+    })
   }
 }
 
-const startPolling = () => {
-  pollTimer = setInterval(pollPrepareStatus, 2000)
+const startPolling = (attemptId) => {
+  pollTimer = setInterval(() => {
+    pollPrepareStatus(attemptId)
+  }, 2000)
 }
 
 const stopPolling = () => {
@@ -840,8 +1061,10 @@ const stopPolling = () => {
   }
 }
 
-const startProfilesPolling = () => {
-  profilesTimer = setInterval(fetchProfilesRealtime, 3000)
+const startProfilesPolling = (attemptId) => {
+  profilesTimer = setInterval(() => {
+    fetchProfilesRealtime(attemptId)
+  }, 3000)
 }
 
 const stopProfilesPolling = () => {
@@ -851,7 +1074,8 @@ const stopProfilesPolling = () => {
   }
 }
 
-const pollPrepareStatus = async () => {
+const pollPrepareStatus = async (attemptId = activePrepareAttemptId.value) => {
+  if (isStaleAttempt(attemptId)) return
   if (!taskId.value && !props.simulationId) return
 
   try {
@@ -860,12 +1084,26 @@ const pollPrepareStatus = async () => {
       simulation_id: props.simulationId
     })
 
+    if (isStaleAttempt(attemptId)) return
+
     if (res.success && res.data) {
       const data = res.data
 
       // 업데이트 진행
       prepareProgress.value = data.progress || 0
       progressMessage.value = data.message || ''
+
+      if (data.status === 'failed' || data.status === 'cancelled') {
+        handlePrepareFailure({
+          stage: data.failure_stage || 'prepare',
+          kind: data.failure_kind || 'prepare_runtime',
+          message: data.failure_reason || data.error || t('step2.prepareFailureMessage'),
+          readiness: data.entity_readiness || {},
+          filterMode: data.entity_filter_mode || entityMatchMode.value,
+          attemptId
+        })
+        return
+      }
 
       // 단계 정보를 구문 분석하고 자세한 로그를 출력합니다.
       if (data.progress_detail) {
@@ -901,7 +1139,7 @@ const pollPrepareStatus = async () => {
         addLog('✓ 준비작업 완료')
         stopPolling()
         stopProfilesPolling()
-        await loadPreparedData()
+        await loadPreparedData(attemptId)
       } else if (data.status === 'failed' || data.status === 'cancelled') {
         addLog(`✗ 실패를 준비하다: ${data.error || '알 수 없는 오류'}`)
         stopPolling()
@@ -913,14 +1151,16 @@ const pollPrepareStatus = async () => {
   }
 }
 
-const fetchProfilesRealtime = async () => {
+const fetchProfilesRealtime = async (attemptId = activePrepareAttemptId.value) => {
+  if (isStaleAttempt(attemptId)) return
   if (!props.simulationId) return
 
   try {
     const res = await getSimulationProfilesRealtime(props.simulationId, 'reddit')
 
+    if (isStaleAttempt(attemptId)) return
+
     if (res.success && res.data) {
-      const prevCount = profiles.value.length
       profiles.value = res.data.profiles || []
       // 기존의 유효한 값을 덮어쓰지 않으려면 API가 유효한 값을 반환할 때만 업데이트하세요.
       if (res.data.total_expected) {
@@ -958,8 +1198,10 @@ const fetchProfilesRealtime = async () => {
 }
 
 // 폴링 구성
-const startConfigPolling = () => {
-  configTimer = setInterval(fetchConfigRealtime, 2000)
+const startConfigPolling = (attemptId) => {
+  configTimer = setInterval(() => {
+    fetchConfigRealtime(attemptId)
+  }, 2000)
 }
 
 const stopConfigPolling = () => {
@@ -969,11 +1211,14 @@ const stopConfigPolling = () => {
   }
 }
 
-const fetchConfigRealtime = async () => {
+const fetchConfigRealtime = async (attemptId = activePrepareAttemptId.value) => {
+  if (isStaleAttempt(attemptId)) return
   if (!props.simulationId) return
 
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
+
+    if (isStaleAttempt(attemptId)) return
 
     if (res.success && res.data) {
       const data = res.data
@@ -986,6 +1231,18 @@ const fetchConfigRealtime = async () => {
         } else if (data.generation_stage === 'generating_config') {
           addLog('LLM을 호출하여 시뮬레이션 구성 매개변수 생성...')
         }
+      }
+
+      if (data.generation_stage === 'failed') {
+        handlePrepareFailure({
+          stage: data.failure_stage || 'config',
+          kind: data.failure_kind || 'config_generation',
+          message: data.failure_reason || t('step2.configFailureMessage'),
+          readiness: data.entity_readiness || {},
+          filterMode: data.entity_filter_mode || entityMatchMode.value,
+          attemptId
+        })
+        return
       }
 
       // 구성이 생성된 경우
@@ -1015,6 +1272,7 @@ const fetchConfigRealtime = async () => {
         }
 
         stopConfigPolling()
+        invalidatePrepareAttempt()
         phase.value = 4
         addLog('✓ 환경이 설정되고 시뮬레이션을 시작할 수 있습니다.')
         emit('update-status', 'completed')
@@ -1025,18 +1283,33 @@ const fetchConfigRealtime = async () => {
   }
 }
 
-const loadPreparedData = async () => {
+const loadPreparedData = async (attemptId = activePrepareAttemptId.value) => {
+  if (isStaleAttempt(attemptId)) return
   phase.value = 2
   addLog('기존 구성 데이터 로드...')
 
   // 지난번에 프로필 가져오기
-  await fetchProfilesRealtime()
+  await fetchProfilesRealtime(attemptId)
+  if (isStaleAttempt(attemptId)) return
   addLog(`짐을 실은 ${profiles.value.length} 상담원 프로필`)
 
   // 구성 가져오기(실시간 인터페이스 사용)
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
+    if (isStaleAttempt(attemptId)) return
     if (res.success && res.data) {
+      if (res.data.generation_stage === 'failed') {
+        handlePrepareFailure({
+          stage: res.data.failure_stage || 'config',
+          kind: res.data.failure_kind || 'config_generation',
+          message: res.data.failure_reason || t('step2.configFailureMessage'),
+          readiness: res.data.entity_readiness || {},
+          filterMode: res.data.entity_filter_mode || entityMatchMode.value,
+          attemptId
+        })
+        return
+      }
+
       if (res.data.config_generated && res.data.config) {
         simulationConfig.value = res.data.config
         addLog('✓ 시뮬레이션 구성이 성공적으로 로드되었습니다.')
@@ -1049,12 +1322,13 @@ const loadPreparedData = async () => {
         }
 
         addLog('✓ 환경이 설정되고 시뮬레이션을 시작할 수 있습니다.')
+        invalidatePrepareAttempt()
         phase.value = 4
         emit('update-status', 'completed')
       } else {
         // 구성이 아직 생성되지 않았습니다. 폴링을 시작하세요.
         addLog('구성이 생성 중이며 폴링을 시작하고 대기 중입니다....')
-        startConfigPolling()
+        startConfigPolling(attemptId)
       }
     }
   } catch (err) {
@@ -1182,6 +1456,133 @@ onUnmounted(() => {
   color: #666;
   line-height: 1.5;
   margin-bottom: 16px;
+}
+
+.badge.error {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.guide-card {
+  margin-bottom: 16px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+}
+
+.guide-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.guide-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.failure-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+}
+
+.failure-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.failure-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #991B1B;
+}
+
+.failure-message {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #7F1D1D;
+}
+
+.failure-badge {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #FCA5A5;
+  background: #FFF;
+  color: #B91C1C;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.failure-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.failure-diagnostic {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(252, 165, 165, 0.55);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.failure-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: #7F1D1D;
+}
+
+.failure-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #991B1B;
+}
+
+.failure-actions {
+  margin-top: 14px;
+}
+
+.retry-btn {
+  border: none;
+  border-radius: 8px;
+  background: #B91C1C;
+  color: #FFF;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.retry-btn:hover {
+  background: #991B1B;
+}
+
+.retry-btn.secondary {
+  background: #FFF;
+  color: #B91C1C;
+  border: 1px solid #FCA5A5;
+}
+
+.retry-btn.secondary:hover {
+  background: #FEF2F2;
 }
 
 /* Action Section */

@@ -19,7 +19,7 @@ cp .env.example .env
 ```env
 LLM_API_KEY=local-oauth-bridge
 LLM_BASE_URL=http://127.0.0.1:8787/v1
-LLM_MODEL_NAME=gpt-5.1-codex-mini
+LLM_MODEL_NAME=gpt-5.4-mini
 ZEP_API_KEY=YOUR_ZEP_API_KEY_HERE
 ```
 
@@ -38,7 +38,7 @@ npm run setup:public
 ```bash
 PORT=8787 \
 BRIDGE_PROVIDER=codex \
-CODEX_MODEL=gpt-5.1-codex-mini \
+CODEX_MODEL=gpt-5.4-mini \
 CODEX_BRIDGE_WORKDIR=$(pwd) \
 npm run dev:all
 ```
@@ -64,6 +64,9 @@ npm run dev:all
 - 브리지: `http://127.0.0.1:8787/health`
 
 ## 6. 첫 테스트 방법
+
+업로드 전에 [시뮬레이션 입력 가이드](./simulation-input-guide-ko.md)를 먼저 읽어 두면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 기준을 바로 맞추기 쉽습니다.
+
 1. `examples/scenarios/ko/`에서 시나리오 하나 선택
 2. MiroFish 홈에서 해당 문서를 업로드
 3. 같은 주제의 `examples/prompts/ko/` 프롬프트 하나 입력

@@ -110,7 +110,7 @@ upstream MiroFish와 별도 bridge 저장소를 각각 clone하게 하지 않고
 - `BRIDGE_PROVIDER=codex` — 기본값, 가장 안정적인 경로
 - `BRIDGE_PROVIDER=gemini` — Gemini CLI의 headless JSON 모드를 쓰는 실험적 로컬 provider
 - `BRIDGE_PROVIDER=claude` — 이 공개판에서는 의도적으로 비활성화
-- `codex:gpt-5.1-codex-mini`, `gemini:gemini-2.5-flash` 같은 provider가 붙은 모델명도 지원
+- `codex:gpt-5.4-mini`, `gemini:gemini-2.5-flash` 같은 provider가 붙은 모델명도 지원
 
 > **왜 Claude를 막아두었나**  
 > Anthropic 공식 문서에는 사전 승인 없이는 제3자 제품이 **claude.ai 로그인이나 rate limit**를 제공하면 안 된다는 취지의 제한이 있다. 그래서 이 퍼블릭 저장소에서는 Claude OAuth를 선택 가능한 공개 provider로 노출하지 않는다.
@@ -143,7 +143,7 @@ cp .env.example .env
 ```env
 LLM_API_KEY=local-oauth-bridge
 LLM_BASE_URL=http://127.0.0.1:8787/v1
-LLM_MODEL_NAME=gpt-5.1-codex-mini
+LLM_MODEL_NAME=gpt-5.4-mini
 ZEP_API_KEY=YOUR_ZEP_API_KEY_HERE
 ```
 
@@ -161,7 +161,7 @@ npm run setup:public
 ### 4. 전체 실행
 ```bash
 PORT=8787 \
-CODEX_MODEL=gpt-5.1-codex-mini \
+CODEX_MODEL=gpt-5.4-mini \
 CODEX_BRIDGE_WORKDIR=$(pwd) \
 npm run dev:all
 ```
@@ -216,6 +216,8 @@ npm run dashboard:worker:auto
 - `examples/packs/en/tesla-korea-recall-2026-03-15/`
 
 ## 첫 실행 추천
+
+업로드 전에 [시뮬레이션 입력 가이드](./docs/simulation-input-guide-ko.md)를 먼저 읽으면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 흐름을 더 쉽게 맞출 수 있습니다.
 
 1. 먼저 `examples/scenarios/ko/` 또는 `examples/scenarios/en/`의 짧은 seed로 가볍게 시작한다
 2. 그 문서 하나만 먼저 업로드한다

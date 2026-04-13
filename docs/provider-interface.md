@@ -52,7 +52,7 @@ Send a JSON field named `provider` to `/v1/chat/completions`:
 Prefix the model name with the provider:
 
 ```text
-codex:gpt-5.1-codex-mini
+codex:gpt-5.4-mini
 gemini:gemini-2.5-flash
 ```
 

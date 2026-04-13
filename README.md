@@ -119,7 +119,7 @@ Instead of asking users to clone upstream MiroFish and a separate bridge project
 - `BRIDGE_PROVIDER=codex` — default, recommended, currently the most proven path
 - `BRIDGE_PROVIDER=gemini` — experimental local provider using Gemini CLI headless JSON mode
 - `BRIDGE_PROVIDER=claude` — intentionally disabled in this public build
-- provider-qualified model names are also supported, such as `codex:gpt-5.1-codex-mini` and `gemini:gemini-2.5-flash`
+- provider-qualified model names are also supported, such as `codex:gpt-5.4-mini` and `gemini:gemini-2.5-flash`
 
 > **Why Claude is disabled here**  
 > Anthropic documentation says that unless previously approved, third-party developers may not offer **claude.ai login or rate limits** for their own products. For that reason this public repository does not expose Claude OAuth as a selectable local bridge provider.
@@ -152,7 +152,7 @@ Then fill:
 ```env
 LLM_API_KEY=local-oauth-bridge
 LLM_BASE_URL=http://127.0.0.1:8787/v1
-LLM_MODEL_NAME=gpt-5.1-codex-mini
+LLM_MODEL_NAME=gpt-5.4-mini
 ZEP_API_KEY=YOUR_ZEP_API_KEY_HERE
 ```
 
@@ -170,7 +170,7 @@ Or:
 ### 4. Start everything
 ```bash
 PORT=8787 \
-CODEX_MODEL=gpt-5.1-codex-mini \
+CODEX_MODEL=gpt-5.4-mini \
 CODEX_BRIDGE_WORKDIR=$(pwd) \
 npm run dev:all
 ```

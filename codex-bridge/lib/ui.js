@@ -96,7 +96,7 @@ function renderIndexPage({ defaultProviderName, supportedProviders }) {
           <h2>Usage notes</h2>
           <ul>
             <li>Default provider comes from <code>BRIDGE_PROVIDER</code>.</li>
-            <li>MiroFish can also select a provider by setting <code>LLM_MODEL_NAME</code> to a provider-qualified model like <code>codex:gpt-5.1-codex-mini</code> or <code>gemini:gemini-2.5-flash</code>.</li>
+            <li>MiroFish can also select a provider by setting <code>LLM_MODEL_NAME</code> to a provider-qualified model like <code>codex:gpt-5.4-mini</code> or <code>gemini:gemini-2.5-flash</code>.</li>
             <li>Per-request provider override in this playground uses the JSON field <code>provider</code>.</li>
             <li>For details, see <code>docs/provider-interface.md</code> and <code>docs/gemini-oauth-bridge-design.md</code>.</li>
           </ul>

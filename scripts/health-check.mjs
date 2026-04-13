@@ -3,8 +3,8 @@
 const endpoints = [
   {
     name: 'frontend',
-    url: process.env.FRONTEND_URL || 'http://127.0.0.1:3000',
-    help: '프론트는 기본적으로 3000 포트를 사용합니다. 이 저장소는 Vite strictPort=true라서 3000이 이미 점유 중이면 3001로 자동 이동하지 않고 시작에 실패합니다.',
+    url: process.env.FRONTEND_URL || `http://127.0.0.1:${process.env.FRONTEND_PORT || '3000'}`,
+    help: '프론트는 기본적으로 3000 포트를 사용합니다. 충돌하면 FRONTEND_PORT=3001 같은 값으로 바꿔 실행하세요.',
   },
   {
     name: 'backend',
@@ -91,7 +91,7 @@ async function main() {
 
       const frontendOk = results.find((result) => result.name === 'frontend')?.ok;
       if (!frontendOk && (await probePort3001())) {
-        console.log('- note     3001 포트에 응답이 있습니다. 이전 Vite 프로세스가 자동으로 3001로 올라갔던 흔적일 수 있습니다. 이 저장소에서는 3000만 공식 포트로 사용하세요.');
+        console.log('- note     3001 포트에 응답이 있습니다. 이 프로젝트는 FRONTEND_PORT 환경변수로 포트를 바꿔 실행할 수 있습니다.');
       }
 
       for (const result of results.filter((item) => !item.ok)) {
