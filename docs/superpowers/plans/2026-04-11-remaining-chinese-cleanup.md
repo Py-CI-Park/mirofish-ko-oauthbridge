@@ -480,4 +480,3 @@ Not-tested: full persona generation A/B
   - `backend/scripts/compare_zep_query_localization.py`
 - Validation doc:
   - `docs/validation/prompt-localization-eval-2026-04-11.md`
-
