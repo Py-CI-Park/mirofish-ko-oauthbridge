@@ -67,11 +67,12 @@ npm run dev:all
 
 업로드 전에 [시뮬레이션 입력 가이드](./simulation-input-guide-ko.md)를 먼저 읽어 두면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 기준을 바로 맞추기 쉽습니다.
 
-1. `examples/scenarios/ko/`에서 시나리오 하나 선택
-2. MiroFish 홈에서 해당 문서를 업로드
-3. 같은 주제의 `examples/prompts/ko/` 프롬프트 하나 입력
-4. Step1 → Step5 순서로 진행
-5. 첫 실행은 라운드 수를 적게 잡기
+1. 처음에는 [좋은 현실 단서 예시](./examples/simulation-reality-clue-good-example.md)처럼 actor가 분명한 문서로 시작
+2. 기술지표/전략 문서를 쓰려면 [actor 중심 변환 예시](./examples/strategy-actor-simulation-example.md)처럼 사람, 조직, 역할을 먼저 추가
+3. MiroFish 홈에서 해당 문서를 업로드
+4. 같은 주제의 프롬프트를 붙여넣기
+5. Step1 → Step5 순서로 진행
+6. 첫 실행은 라운드 수를 적게 잡기
 
 ## 7. 권장 팁
 - 처음엔 문서 1개만 업로드
