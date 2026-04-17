@@ -70,3 +70,6 @@ dashboard/.next/
 dashboard/.vercel/
 .superset/config.local.json
 temp_cache/
+
+# Local git worktrees
+.worktrees/
