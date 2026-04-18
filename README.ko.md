@@ -219,6 +219,8 @@ npm run dashboard:worker:auto
 
 업로드 전에 [시뮬레이션 입력 가이드](./docs/simulation-input-guide-ko.md)를 먼저 읽으면 `좋은 입력`과 `완화 매칭으로 다시 시도`(필터 완화 재시도 개념) 흐름을 더 쉽게 맞출 수 있습니다.
 
+기술지표/전략 문서를 업로드하려면 [actor 중심 변환 예시](./docs/examples/strategy-actor-simulation-example.md)를 먼저 참고하세요. 변수명과 수식만 있는 입력은 Step2에서 `matched_entities=0`으로 실패할 수 있습니다.
+
 1. 먼저 `examples/scenarios/ko/` 또는 `examples/scenarios/en/`의 짧은 seed로 가볍게 시작한다
 2. 그 문서 하나만 먼저 업로드한다
 3. 대응되는 `examples/prompts/...` 프롬프트 하나를 붙여넣는다
